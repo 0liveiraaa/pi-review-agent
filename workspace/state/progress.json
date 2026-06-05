@@ -1,35 +1,31 @@
 {
   "current_session": {
-    "session_id": "s_2026-06-05T03-50-45-346911+00-00",
-    "started": "2026-06-05T03:50:45.346942+00:00",
-    "scope": "4",
+    "session_id": "s_2026-06-05T12-30-26-224Z",
+    "started": "2026-06-05T12:30:26.224Z",
+    "scope": "单元学习-第11章",
     "mode": "quiz",
     "total_questions": 0,
     "correct": 0,
     "incorrect": 0,
-    "current_question_index": 1,
+    "current_question_index": 0,
     "covered_knowledge_points": [],
     "remaining_knowledge_points": [
-      "pointer",
-      "reference",
-      "const-pointer",
-      "const-reference",
-      "oop-three-features",
-      "abstraction-representation",
-      "class-design-principles"
-    ],
-    "recent_weaknesses": [],
-    "last_lingering_question": null
+      "storage-space",
+      "new-delete",
+      "new-array",
+      "smart-pointer",
+      "shared-pointer"
+    ]
   },
   "history": {
-    "total_questions_answered": 1,
-    "total_correct": 1,
+    "total_questions_answered": 2,
+    "total_correct": 2,
     "total_incorrect": 0,
     "chapters_covered": [
-      "2",
-      "3",
       "指针",
-      "10"
+      "10",
+      "3",
+      "2"
     ],
     "sessions": [
       {
@@ -62,6 +58,14 @@
         "scope": "3",
         "total_questions": 0,
         "correct": 0,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T04-03-56-402586+00-00",
+        "date": "20260605",
+        "scope": "2",
+        "total_questions": 1,
+        "correct": 1,
         "incorrect": 0
       }
     ]

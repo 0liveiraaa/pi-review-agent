@@ -1,9 +1,9 @@
 # 期末复习助手 — 项目设计文档
 
-> 版本: v1.1  
-> 日期: 2024-06-05  
-> 课程: 面向对象程序设计 (C++)  
-> 状态: M1 完成 (已迁移至 Pi)
+> 版本: v2.0
+> 日期: 2026-06-05
+> 课程: 面向对象程序设计 (C++)
+> 状态: M2 完成 + 交互细化中
 
 ---
 
@@ -11,16 +11,16 @@
 
 ### 1.1 目标
 
-构建一个 AI 驱动的期末复习助手，运行在 Pi Coding Agent 上，以知识点卡片 + 题目考察 + 深度讨论的方式辅助复习。
+构建一个 AI 驱动的期末复习助手，运行在 Pi Coding Agent 上，以知识点卡片 + 题目考察 + 深度讨论的方式辅助复习。支持三种复习模式。
 
 ### 1.2 核心设计原则
 
 | 原则 | 说明 |
 |------|------|
-| **先跑通再优化** | M1 最小闭环优先，不 prematurely optimize |
 | **代码管状态，Agent 管语言** | Python 负责流程/状态/数据，Pi 负责理解和生成 |
-| **每题一 session** | 一个题目生命周期在一个 Pi 调用序列内完成，跨题重置 |
-| **JSON 传上下文，MD 存历史** | JSON 轻量注入下一题，MD 保留完整对话和分析 |
+| **每题独立调用，无 session 污染** | 每个子任务通过 `pi -p` 独立调用 |
+| **JSON 传上下文，MD 存历史** | JSON 轻量注入下一题，MD 保留完整记录 |
+| **先本地后远程** | 卡片优先代码直读，归档优先本地生成，减少 pi 调用 |
 
 ### 1.3 技术栈
 
@@ -30,8 +30,9 @@ Python 3.x (标准库，零外部依赖)
   ├── JSON 状态文件（进度 / 错题本 / 知识链索引）
   └── MD 归档文件（完整对话 + 复盘分析）
 
-Pi Coding Agent (pi -p --print 模式)
-  ├── 系统提示: --system-prompt (显式传参，由 prompts/review-assistant.md 加载)
+Pi Coding Agent (pi -p --print 模式, deepseek-v4-flash)
+  ├── 系统提示: .pi/SYSTEM.md (自动加载)
+  ├── Skill: .pi/skills/review-assistant/SKILL.md (按需加载)
   ├── 工具: --tools read (可查阅 reference/ 参考资料)
   └── 角色: 题目生成 / 判题 / 解析 / 讨论 / 归档
 ```
@@ -39,49 +40,51 @@ Pi Coding Agent (pi -p --print 模式)
 ### 1.4 项目结构
 
 ```
-workspace/
-├── DESIGN.md                    # 本文件
-├── review_cli.py               # Python CLI 主入口
-├── state/
-│   ├── progress.json           # 复习进度
-│   ├── wrong_book.json         # 错题本
-│   └── knowledge_chains.json   # 已建立的知识链索引
-├── archive/
-│   └── sessions/               # 每题完整归档 (MD)
-│       └── q_20240604_001.md
-├── prompts/
-│   └── review-assistant.md     # Skill prompt
-├── schemas/
-│   ├── question.json           # 题目结构 schema
-│   ├── archive.json            # 归档结构 schema
-│   └── knowledge_index.json    # 知识点索引 schema
-└── data/
-    └── knowledge_index.json    # 知识点元数据（可考察性、难度、关联）
+面向对象程序设计/
+├── .pi/
+│   ├── SYSTEM.md                          # 系统提示 (自动加载)
+│   └── skills/review-assistant/SKILL.md   # 复习助手 Skill (172→250+行)
+├── reference/                             # 课程资料
+│   ├── 00-课程总览.md
+│   ├── 01-章节笔记/{6.5,6.6,6.7,6.8}/   # 按学期分组的章节笔记
+│   ├── 02-概念卡片/                       # 500 个概念卡片 MD
+│   ├── 04-考点整理/{6.5,6.6,6.7}/        # 考点速记
+│   └── 历年考试题/
+└── workspace/
+    ├── DESIGN.md                          # 本文件
+    ├── review_cli.py                      # Python CLI 主入口 (~1450行)
+    ├── state/
+    │   ├── progress.json                  # 复习进度
+    │   ├── wrong_book.json                # 错题本
+    │   └── knowledge_chains.json          # 知识链索引
+    ├── archive/
+    │   ├── sessions/{session_id}/         # 每 session 的题目归档
+    │   │   ├── q_20260605_001.json
+    │   │   └── q_20260605_001.md
+    │   └── summaries/                    # session 总结报告
+    │       └── {session_id}_总结.md
+    ├── data/
+    │   └── knowledge_index.json           # 20章74个知识点索引
+    └── schemas/                           # JSON Schema (设计参考)
 ```
 
 ---
 
 ## 2. 交互流程
 
-### 2.1 整体会话模式
+### 2.1 三种复习模式
 
 ```
 用户启动 CLI
   │
-  ├─ 声明复习范围: "复习第9章" / "复习指针和引用" / "复习全部错题"
+  ├─ 模式 1: 卡片→做题
+  │   └─ 展示知识卡片 (代码直读 reference/02-概念卡片/) → 做题 → 讨论 → 下一题
   │
-  ├─ 知识卡片模式 (可选跳过)
-  │   └─ 展示知识点概述 → 用户阅读 → "做题" / "跳过"
+  ├─ 模式 2: 直接做题 (默认)
+  │   └─ 直接出题 → 作答 → 判题 → 讨论 → 下一题
   │
-  ├─ 题目生命周期 (循环，每轮一道题)
-  │   ├─ 1. 出题
-  │   ├─ 2. 用户作答
-  │   ├─ 3. 判题 + 解析 (Level 1)
-  │   ├─ 4. 讨论 (用户追问 → Level 2/3)
-  │   ├─ 5. 用户确认理解 ("下一题")
-  │   └─ 6. 归档 (MD + JSON)
-  │
-  └─ 用户输入 "总结" → 结束会话，生成全局复盘
+  └─ 模式 3: 单元学习
+      └─ 选章节 → 列小节 → 逐节学习(内容+1题) → 章节综合回顾(3题)
 ```
 
 ### 2.2 结构化指令
@@ -89,341 +92,225 @@ workspace/
 | 指令 | 别名 | 功能 |
 |------|------|------|
 | `下一题` | `n` | 确认理解，归档当前题，进入下一题 |
-| `跳过` | `skip` | 跳过当前卡片，直接进入题目 |
-| `提示` | `hint` | 请求提示，不展示完整答案 |
-| `总结` | `sum` | 结束当前复习会话，生成全局复盘 |
-| `换题` | `redo` | 放弃当前题，换同知识点的新题 |
+| `跳过` | `skip` | 跳过当前卡片/题目 |
+| `提示` | `hint` | 请求引导性提示（不直接给答案） |
+| `更难` | `harder`, `加难度` | 提升下一题一个难度级别 |
+| `总结` | `sum` | 结束会话，生成全局复盘 |
+| `退出` | `q` | 中断会话，保存进度 |
 
-### 2.3 题目生命周期中的 Pi 调用
+### 2.3 题目生命周期 (模式 1/2)
 
 ```
 ┌─────────────────────────────────────────┐
-│  一次题目生命周期 (独立 Pi 调用序列)       │
+│  一次题目生命周期                         │
 │                                         │
-│  调用1: 生成题目                          │
-│  调用2: 判题 + Level 1 解析               │
-│  调用3-N: 讨论 (用户追问，Level 2/3 展开)   │
-│  调用N+1: 归档 → 生成 MD + JSON          │
-│                                         │
-│  → 用户输入"下一题"                       │
-│  → Python 解析指令，归档落地               │
-│  → 开启新一轮 Pi 调用，注入精简上下文       │
+│  [可选] 卡片展示 (代码直读, 0次pi调用)     │
+│  调用1: 生成题目 (60s)                    │
+│  调用2: 判题 + L1 解析 (60s)              │
+│  调用3-N: 讨论 (60s/次)                   │
+│  调用N+1: 归档                            │
+│    ├─ 答对+无追问: 本地快速归档 (0次pi)    │
+│    └─ 其他: pi 生成归档 (90s)             │
 └─────────────────────────────────────────┘
+```
 
-每个子任务通过 pi -p --system-prompt 独立调用，无 session 状态污染。
-Pi 可通过 --tools read 查阅 reference/ 中的考点速记和概念卡片。
+### 2.4 单元学习流程 (模式 3)
+
+```
+选择章节 (1-20)
+  ↓
+扫描 01-章节笔记, 列出小节
+  ↓
+┌─ For each 小节 ───────────────────────┐
+│ 1. 代码直读 MD 展示内容 (0次pi)        │
+│ 2. Pi 生成 1 道小节题 (60s)           │
+│ 3. 判题 (60s) → 追问 → 快速归档       │
+└───────────────────────────────────────┘
+  ↓
+章节综合回顾:
+  Pi 生成 3 道混合题 (90s)
+  逐题作答 → 判题 → 快速归档
 ```
 
 ---
 
 ## 3. 题目体系
 
-### 3.1 维度一：知识点广度
+### 3.1 题型
 
-| 级别 | 代码 | 含义 | 示例 |
-|------|------|------|------|
-| Single | S | 单个知识点 | "关于拷贝构造函数，以下哪个说法正确？" |
-| Multi | M | 2-3 个关联知识点联动 | "关于浅拷贝和深拷贝的区别，以下正确的是？" |
-| Chain | C | 知识链条综合考察 | "从拷贝构造到赋值函数，构建完整的对象复制策略" |
+| 题型 | 代码 | 适用难度 | 特点 |
+|------|------|----------|------|
+| 正误判断 | judgment | S-R, S-U | 一句陈述，判断正误 |
+| 单项选择 | choice | S-U, M-U, M-A | 4 选项，1 正确，3 干扰 |
+| 简述题 | short_answer | M-A, C-A | 开放式问题，按要点给分 |
 
-### 3.2 维度二：认知层次
+### 3.2 难度矩阵 (5 级)
 
-| 级别 | 代码 | 含义 | 适用题型 |
-|------|------|------|----------|
-| Recall | R | 记忆/识别 | 正误判断 |
-| Understand | U | 理解/区分 | 选择题、正误判断 |
-| Apply | A | 应用/分析 | 选择题、简述题 |
+| 级别 | 广度 × 认知 | 含义 | 题型 |
+|------|-------------|------|------|
+| **S-R** | Single × Recall | 单个知识点，记忆/识别 | 判断 |
+| **S-U** | Single × Understand | 单个知识点，理解/区分 | 判断、选择 |
+| **M-U** | Multi × Understand | 2-3个关联概念，理解比较 | 选择 |
+| **M-A** | Multi × Analyze | 多概念综合推理 | 选择、简述 |
+| **C-A** | Chain × Analyze | 知识链条综合 | 简述 |
 
-### 3.3 难度矩阵
+### 3.3 难度自适应
 
-```
-        R       U       A
-  S   简单    基础     —
-  M    —     中等    较难
-  C    —      —     困难
-
-示例:
-  S-R = 判断"拷贝构造函数在对象初始化时调用" (正误)
-  S-U = 选择题: 以下关于 const 成员函数的说法正确的是？
-  M-U = 选择题: 关于 const + 指针的组合，以下正确的是？
-  M-A = 简述题: 比较深拷贝和浅拷贝，说明各自适用场景
-  C-A = 综合题: 设计一个支持深拷贝和赋值的动态数组类
-```
+- **自动**: 正确率 ≥80% 升级，<50% 降级
+- **手动**: 用户输入 `更难` 提升一级（仅影响下一题）
+- **基线**: 每个知识点有 `difficulty_baseline`
 
 ---
 
 ## 4. 解析深度 (Level 1-3)
 
-### 4.1 三级解析
-
-| Level | 触发时机 | 内容 | 示例 |
-|-------|----------|------|------|
-| L1 | 判题后立即展示 | 本题正确答案 + 直接解析 (为什么选B) | "B 正确。浅拷贝复制指针的地址值而非指向的内容，导致两个对象的指针成员指向同一块堆内存。" |
-| L2 | 用户追问讨论中展开 | 关联知识点的详细复习 | "浅拷贝 (shallow copy) 和 深拷贝 (deep copy) 的区别在于对指针成员的处理……" |
-| L3 | 归档时整理 | 知识链条全景 | "浅拷贝 → 深拷贝 → 自定义拷贝构造函数 → 赋值函数 → 自我赋值检查 → this 指针" |
-
-### 4.2 讨论规则
-
-- 助手**不主动追问**，由用户主导讨论方向
-- 助手在回答用户追问时，自然地展开 Level 2 知识点
-- 归档时自动生成 Level 3 知识链
+| Level | 触发时机 | 内容 |
+|-------|----------|------|
+| L1 | 判题后立即展示 | 正确答案 + 直接解释 |
+| L2 | 讨论中自然展开 | 关联知识点、代码示例、概念对比 |
+| L3 | 归档时整理 | 知识链条: 知识点1 → 知识点2 → 知识点3 |
 
 ---
 
-## 5. 综合大题
+## 5. 数据设计
 
-### 5.1 大题类型
+### 5.1 知识点索引 (`data/knowledge_index.json`)
 
-| 类型 | 交互方式 | 考察目标 |
-|------|----------|----------|
-| 设计一个类 | 用户给出设计 → 助手逐部分检查 (接口/封装/构造析构/成员) → 纠偏 → 完整参考 | 类的设计能力 |
-| 分析继承关系 | 用户描述关系 → 助手梳理 (基类/派生类/虚函数/类型转换) → 追问边界情况 | 继承体系理解 |
-| 设计方案 | 用户给思路 → 助手追问设计权衡 (组合vs继承/耦合度/扩展性) → 对比方案优劣 | 面向对象设计思维 |
+覆盖全部 20 章，74 个知识点。每个知识点包含:
+- `id`, `name`, `chapter`, `exam_level`
+- `question_types`: 支持的题型列表
+- `difficulty_baseline`: 难度基线
+- `related`: 关联知识点 ID 列表
+- `common_misconceptions`: 常见误区
+- `generation_hints`: 出题提示
 
-### 5.2 分步推进模式
+### 5.2 状态文件
 
-大题采用分步推进：先给题目背景 → 用户给出初步思路 → 助手引导展开 → 逐步完善 → 完整答案 → 讨论 → 总结。
-
----
-
-## 6. 数据设计
-
-### 6.1 知识点索引 (`data/knowledge_index.json`)
-
-```json
-{
-  "knowledge_points": [
-    {
-      "id": "shallow-copy",
-      "name": "浅拷贝",
-      "chapter": 9,
-      "aliases": ["shallow copy", "浅复制"],
-      "tags": ["对象拷贝", "指针", "堆区"],
-      "exam_level": "high",
-      "question_types": ["judgment", "choice", "short_answer"],
-      "difficulty_baseline": "S-U",
-      "prerequisites": ["pointer", "class-object"],
-      "related": ["deep-copy", "copy-constructor", "assignment-operator"],
-      "wiki_links": ["深拷贝", "缺省拷贝构造函数", "对象的拷贝", "重复释放"],
-      "common_misconceptions": [
-        "混淆浅拷贝和赋值的区别",
-        "认为浅拷贝总是错误的"
-      ]
-    }
-  ]
-}
-```
-
-### 6.2 题目结构 (`schemas/question.json`)
-
-```json
-{
-  "question_id": "q_20240604_001",
-  "knowledge_points": ["shallow-copy", "copy-constructor"],
-  "difficulty": "M-U",
-  "type": "choice",
-  "question_text": "关于浅拷贝，以下说法正确的是？",
-  "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-  "correct_answer": "B",
-  "explanation_l1": "浅拷贝复制指针的地址值...",
-  "related_knowledge_chain": ["深拷贝", "自定义拷贝构造函数", "赋值函数"]
-}
-```
-
-### 6.3 题目归档 (`archive/sessions/q_{id}.md`)
-
-```markdown
----
-question_id: q_20240604_001
-knowledge_points: [浅拷贝, 拷贝构造函数]
-difficulty: M-U
-type: choice
-timestamp: 2024-06-04T22:30:00
-is_correct: false
----
-
-# 题目归档: q_20240604_001
-
-## 题目
-关于浅拷贝，以下说法正确的是？ ...
-
-## 用户答案
-A (错误)
-
-## 正确答案 + 解析
-B 正确。浅拷贝复制指针的地址值...
-
-## 讨论总结
-### 用户错误根因
-用户混淆了浅拷贝和赋值的触发时机...
-
-### 讨论中确认的知识点
-- 拷贝构造 vs 赋值的区别
-- 指针成员在浅拷贝中的行为
-
-### 后续建议
-下次遇到资源管理类题目时，先确认是初始化还是赋值操作...
-
-## 知识链 (Level 3)
-浅拷贝 → 深拷贝 → 自定义拷贝构造函数 → 赋值函数 → 自我赋值 → this指针
-
-## 完整对话记录
-[用户]: 为什么A不对？
-[助手]: A 描述的是赋值行为而非拷贝构造...
-...
-```
-
-### 6.4 进度状态 (`state/progress.json`)
-
+**progress.json** — 当前 session + 历史汇总
 ```json
 {
   "current_session": {
-    "started": "2024-06-04T22:00:00",
-    "scope": ["第9章", "第10章"],
-    "total_questions": 5,
-    "correct": 3,
-    "incorrect": 2
+    "session_id", "scope", "mode",
+    "total_questions", "correct", "incorrect",
+    "covered_knowledge_points", "remaining_knowledge_points",
+    "last_lingering_question", "last_discussion",
+    "_next_difficulty_up", "_wrong_book_mode"
   },
-  "covered_knowledge_points": ["shallow-copy", "deep-copy", "copy-constructor"],
-  "remaining_knowledge_points": ["assignment-operator", "self-assignment"],
-  "recent_weaknesses": ["shallow-copy-vs-assignment"],
-  "last_lingering_question": "移动语义是否也涉及这个问题？"
-}
-```
-
-### 6.5 错题本 (`state/wrong_book.json`)
-
-```json
-{
-  "entries": [
-    {
-      "question_id": "q_20240604_001",
-      "knowledge_points": ["shallow-copy"],
-      "error_type": "概念混淆",
-      "error_detail": "混淆浅拷贝触发时机与赋值触发时机",
-      "timestamp": "2024-06-04T22:30:00"
-    }
-  ],
-  "error_type_stats": {
-    "概念混淆": 5,
-    "知识遗漏": 3,
-    "推理错误": 2
+  "history": {
+    "total_questions_answered", "total_correct", "total_incorrect",
+    "chapters_covered", "sessions": [...]
   }
 }
 ```
 
----
-
-## 7. 记忆管理
-
-### 7.1 工作记忆 vs 持久记忆
-
-```
-工作记忆 (Working Memory)
-  ├── 载体: Pi 调用上下文 (--system-prompt + stdin)
-  ├── 生命周期: 一道题目 (出题 → 判题 → 讨论 → 归档)
-  ├── 内容: 题目文本 + 用户答案 + 讨论历史
-  └── 策略: 每题独立调用，上下文由 Python CLI 注入 ✅
-
-持久记忆 (Persistent Memory)
-  ├── 载体: JSON 文件 + MD 归档
-  ├── 生命周期: 永久
-  ├── 内容: 进度 / 错题本 / 知识链 / 归档
-  └── 策略: Python 层管理 ✅
+**wrong_book.json** — 错题记录 + 错误类型统计
+```json
+{
+  "entries": [{ "question_id", "knowledge_points", "error_type", "error_detail", "timestamp" }],
+  "error_type_stats": { "概念混淆": N, "知识遗漏": N, "推理错误": N, "粗心失误": N }
+}
 ```
 
-### 7.2 下一题上下文注入
-
-每道新题开始时，Python 层向 Pi 注入精简上下文：
-
-```
-【复习范围】第9章: 对象拷贝与赋值
-【当前进度】第5题 | 已答4题 (正确3, 错误1)
-【当前知识点】运算符重载 | 难度: M-U
-【近期薄弱点】浅拷贝/深拷贝区分 (第3题答错)
-【已建立的知识链】浅拷贝→深拷贝→拷贝构造→赋值函数
-【遗留问题】用户曾提到移动语义，尚未展开
+**knowledge_chains.json** — 跨知识点关联
+```json
+{
+  "chains": [{ "chain": "A → B → C", "nodes": [...], "first_seen": "..." }],
+  "knowledge_points_linked": [...]
+}
 ```
 
----
+### 5.3 归档结构
 
-## 8. 分阶段实现
+```
+archive/
+├── sessions/
+│   └── {session_id}/
+│       ├── q_20260605_001.json    # 结构化归档
+│       └── q_20260605_001.md      # 可读的 MD 归档
+└── summaries/
+    └── {session_id}_总结.md       # Session 总结报告
+```
 
-### M1: 最小闭环 🎯
+每道题归档包含: question_id, knowledge_points, difficulty, type, timestamp, question_text, user_answer, correct_answer, explanation_l1, is_correct, discussion_summary, knowledge_chain_l3, suggestion_next。
 
-**目标**: 跑通一道完整题目的生命周期
-
-| 任务 | 产出 |
-|------|------|
-| P1.1 Python CLI 骨架 | `review_cli.py` — 命令解析 + Pi 调用 + 基本状态管理 |
-| P1.2 知识点索引 (最小) | `data/knowledge_index.json` — 第9章知识点 |
-| P1.3 Skill prompt (最小) | `prompts/review-assistant.md` — 出题 + 判题 + L1 解析 + 归档 |
-| P1.4 状态文件初始化 | `progress.json` + `wrong_book.json` |
-| P1.5 集成测试 | 用第9章资料跑通: 卡片 → 选择题 → 作答 → 判题 → 讨论 → 下一题 → 归档 |
-
-### M2: 完整小题
-
-| 任务 | 产出 |
-|------|------|
-| P2.1 全题型支持 | 判断 + 选择 + 简述，三级难度 (S-R ~ M-A) |
-| P2.2 知识卡片模式 | 先展示卡片再出题，支持跳过 |
-| P2.3 完整归档 | MD 完整对话 + JSON 结构化归档 + 知识链 (L3) |
-| P2.4 错题本 | 错误分类 + 统计 + 错题重做 |
-| P2.5 全章节知识索引 | `knowledge_index.json` 覆盖 20 章 |
-
-### M3: 综合大题
-
-| 任务 | 产出 |
-|------|------|
-| P3.1 大题三种类型 | 类设计 / 继承分析 / 方案设计 |
-| P3.2 分步推进 | 出题→思路→引导→完善→总结 |
-| P3.3 全局总结 | `总结` 指令，跨题目的全局复盘报告 |
+Session 总结报告包含: 总体评价、逐题回顾表、薄弱环节、知识体系、下次建议。
 
 ---
 
-## 9. 设计决策记录
+## 6. 上下文策略
+
+### 6.1 Pi 调用的两层上下文
+
+**第一层 — 自动加载 (每次调用都生效)**:
+- `.pi/SYSTEM.md` (24行): 角色定义 + 核心行为 + 确认信号
+- `.pi/skills/review-assistant/SKILL.md` (250+行): 难度体系 + 题型模板 + 判题标准 + 讨论规则 + 归档格式 + 总结模板
+
+**第二层 — Python 注入 (每次 call_pi 传入)**:
+- 题目生成: 复习范围 + 进度 + 知识点详情 + 误区 + 关联 + 薄弱点 + 知识链 + 遗留问题
+- 判题: 题目 JSON + 用户答案
+- 讨论: 题目 + 判题结果 + 讨论历史 + 用户追问
+- 归档: 题目 + 答案 + 判题结果 + 完整讨论历史
+- 总结: session 数据 + 全部题目归档 JSON
+
+### 6.2 跨题上下文传递
+
+每道新题的 build_context 注入:
+- 上一题的遗留问题 (last_lingering_question)
+- 上一题的讨论要点 (last_discussion, 保留最后 4 条)
+- 近期薄弱点 (get_recent_weaknesses)
+- 已建立的知识链 (knowledge_chains)
+
+---
+
+## 7. 设计决策记录
 
 | # | 决策 | 选择 | 理由 |
 |---|------|------|------|
-| 1 | 单门课 vs 通用框架 | 单门课 | 先跑通闭环，期末需求紧迫 |
-| 2 | 运行平台 | Pi Coding Agent | 已迁移 |
-| 3 | 题目来源 | LLM 生成 (先) + 真题 (后) | 避免 doc 解析阻塞 |
-| 4 | 知识点关联 | wiki-link 自动 + 索引补充 | 复用现有 wiki-link 体系 |
-| 5 | 节奏控制 | 用户驱动 (结构化指令) | 用户掌控复习进度 |
-| 6 | 卡片 vs 题目顺序 | 用户可选 | 灵活适配不同复习习惯 |
-| 7 | 讨论深度 | Level 1→2→3，用户主导 | L1 判题即给，L2/L3 讨论展开 |
-| 8 | 讨论主动性 | 助手不主动追问 | 减少实现复杂度 |
-| 9 | 确认方式 | 结构化指令 (`下一题`) | 命令解析层处理 |
-| 10 | 记忆策略 | JSON (上下文传递) + MD (完整记录) | wiki 式记忆，LLM 按需 Read |
-| 11 | 题目难度 | S/M/C × R/U/A 矩阵 | 适配考试风格 |
-| 12 | 综合大题 | 分步推进 | 思路比结论重要 |
-| 13 | 架构模式 | Python 管流程 + Pi 管语言 | 职责分离 |
-| 14 | Skill 粒度 | 一个 Skill，不拆子功能 | 先跑通再优化 |
-| 15 | 调用边界 | 每题独立调用，无 session | 避免上下文污染 |
-| 16 | Sub-agent 拆分 | 暂不拆分 | 先验证核心逻辑 |
+| 1 | 单门课 vs 通用框架 | 单门课 | 先跑通闭环 |
+| 2 | 运行平台 | Pi Coding Agent | 原生 Skill 自动发现 |
+| 3 | 系统提示方式 | .pi/SYSTEM.md | Pi 原生支持，无需 --system-prompt |
+| 4 | Skill 组织 | 单个 SKILL.md | 一个复习助手涵盖所有子任务 |
+| 5 | 题目来源 | LLM 生成 | 基于 reference/ 资料实时生成 |
+| 6 | 难度体系 | S/M/C × R/U/A = 5级 | 广度×认知，适配考试 |
+| 7 | 节奏控制 | 用户驱动 (结构化指令) | 用户掌控复习进度 |
+| 8 | 卡片 vs 题目顺序 | 用户可选 (三种模式) | 适配不同复习习惯 |
+| 9 | 讨论主动性 | 助手不主动追问 | 减少实现复杂度 |
+| 10 | 确认方式 | 结构化指令 (n/下一题) | 明确无歧义 |
+| 11 | 记忆策略 | JSON (上下文传递) + MD (完整记录) | wiki 式记忆 |
+| 12 | 架构模式 | Python 管流程 + Pi 管语言 | 职责分离 |
+| 13 | 模型选择 | deepseek-v4-flash | 速度快，成本低 |
+| 14 | 卡片策略 | 代码直读 MD → LLM 兜底 | 优先本地，减少 pi 调用 |
+| 15 | 归档策略 | 答对无追问本地归档 → pi 归档兜底 | 减少不必要的 pi 调用 |
+| 16 | Session 组织 | 按 session 分文件夹 | 便于回顾和总结 |
+| 17 | 总结报告 | 收集全部归档 → pi 生成 | 一次性全面复盘 |
 
 ---
 
-## 10. 实现状态
-
-### M1 文件清单
-
-| 文件 | 状态 | 说明 |
-|------|------|------|
-| `DESIGN.md` | ✅ | 本设计文档 (v1.1) |
-| `review_cli.py` | ✅ | Python CLI 主入口 (命令解析 + 状态管理 + Pi 调度) |
-| `test_m1.py` | ✅ | M1 集成测试 (自动化验证完整生命周期) |
-| `data/knowledge_index.json` | ✅ | 第9章知识点索引 (10 个知识点 + 题型模板 + 考试风格) |
-| `prompts/review-assistant.md` | ✅ | 系统提示 (通过 --system-prompt 显式传入 Pi) |
-| `schemas/question.json` | ✅ | 题目结构 JSON Schema |
-| `schemas/archive.json` | ✅ | 归档结构 JSON Schema |
-| `state/progress.json` | ✅ | 复习进度 |
-| `state/wrong_book.json` | ✅ | 错题本 |
-| `state/knowledge_chains.json` | ✅ | 知识链索引 |
+## 8. 实现状态
 
 ### 已完成
 
-- [x] M1 集成测试 — 第9章内容完整跑通一道题目生命周期 ✅
-- [x] Pi 调用 `pi -p --system-prompt` 验证通过 ✅
-- [x] reference/ 目录通过 `--tools read` 可被 Pi 访问 ✅
-- [x] 从 Claude 迁移至 Pi ✅
+- [x] 三种复习模式 (卡片→做题 / 直接做题 / 单元学习)
+- [x] 三种题型 (判断 / 选择 / 简述)
+- [x] 5 级难度体系 + 自适应 + 手动 `更难`
+- [x] 20 章 74 个知识点索引
+- [x] 范围匹配 (章节号 / 中文数字 / 关键字 / 错题)
+- [x] 知识卡片代码直读 (reference/02-概念卡片/)
+- [x] 单元学习 (01-章节笔记 小节推进)
+- [x] Session 分文件夹归档 + 总结报告
+- [x] 错题本 + 知识链索引
+- [x] 输入校验 (空答案拦截 / 模式选择校验)
+- [x] 快速归档 (答对无追问本地生成)
+- [x] 上下文跨题传递 (遗留问题 + 讨论要点 + 薄弱点 + 知识链)
+- [x] deepseek-v4-flash 模型 + 差异化超时设置
+
+### 待做 (交互细化，不启动 M3)
+
+- [ ] 统一模式间的命令集 (模式 3 缺少 `提示`/`更难` 等)
+- [ ] 模式 3 添加 session 总结
+- [ ] 模式 3 的 _fast_archive 传入正确的 kp 信息
+- [ ] "回顾" 命令 — 查看当前 session 已做题
+- [ ] 优化 "全部覆盖" 后的交互引导
+- [ ] 章节进度可视化
+- [ ] 范围输入支持章节名模糊匹配
+- [ ] 状态文件大小控制 (progress.json sessions 列表裁剪)

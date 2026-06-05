@@ -1,0 +1,14 @@
+{
+  "name": "cpp-review-assistant",
+  "version": "2.0.0",
+  "description": "C++ 面向对象程序设计期末复习助手 — pi SDK 版本",
+  "type": "module",
+  "main": "review_cli.mjs",
+  "scripts": {
+    "start": "node review_cli.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.78.0",
+    "marked": "^18.0.5"
+  }
+}

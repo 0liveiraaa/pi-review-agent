@@ -34,9 +34,12 @@ PROJECT_ROOT = Path(__file__).parent.parent  # 面向对象程序设计/
 WORKSPACE = Path(__file__).parent            # workspace/
 REFERENCE = PROJECT_ROOT / "reference"
 CARD_DIR = REFERENCE / "02-概念卡片"
+NOTE_DIR = REFERENCE / "01-章节笔记"
 DATA_DIR = WORKSPACE / "data"
 STATE_DIR = WORKSPACE / "state"
 ARCHIVE_DIR = WORKSPACE / "archive"
+SESSION_ARCHIVE_DIR = ARCHIVE_DIR / "sessions"
+SUMMARY_DIR = ARCHIVE_DIR / "summaries"
 # ─── 状态文件路径 ───
 PROGRESS_FILE = STATE_DIR / "progress.json"
 WRONG_BOOK_FILE = STATE_DIR / "wrong_book.json"
@@ -476,6 +479,12 @@ def _select_difficulty(kp: dict, session: dict) -> str:
     else:
         idx = baseline_idx
 
+    # 用户主动要求提升难度
+    if session.get("_next_difficulty_up"):
+        idx = min(idx + 1, len(DIFFICULTY_LADDER) - 1)
+        # 清除标志（下次 _select_difficulty 不再自动升级）
+        update_session(_next_difficulty_up=False)
+
     return DIFFICULTY_LADDER[idx]
 
 
@@ -605,9 +614,13 @@ def parse_and_save_archive(pi_output: str, question_id: str):
 
 
 def _write_archive_files(archive: dict, question_id: str) -> None:
-    """保存 JSON 和 MD 归档文件"""
+    """保存 JSON 和 MD 归档文件 (按 session 分文件夹)"""
+    session_id = _get_current_session_id()
+    session_dir = SESSION_ARCHIVE_DIR / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+
     # JSON
-    json_path = ARCHIVE_DIR / "sessions" / f"{question_id}.json"
+    json_path = session_dir / f"{question_id}.json"
     save_json(json_path, archive)
 
     # MD
@@ -633,11 +646,10 @@ def _write_archive_files(archive: dict, question_id: str) -> None:
         suggestion_next=archive.get("suggestion_next", "继续加油！"),
     )
 
-    md_path = ARCHIVE_DIR / "sessions" / f"{question_id}.md"
+    md_path = session_dir / f"{question_id}.md"
     md_path.write_text(md_content, encoding="utf-8")
 
-    print(f"\n  ✅ JSON 归档: {json_path}")
-    print(f"  ✅ MD 归档:  {md_path}")
+    print(f"\n  ✅ 已归档 → {session_dir.name}/{question_id}")
 
 
 def _update_state_from_archive(archive: dict) -> None:
@@ -739,6 +751,314 @@ def _strip_frontmatter(content: str) -> str:
 
 
 # ═══════════════════════════════════════════
+# 单元学习 (模式 3)
+# ═══════════════════════════════════════════
+
+def _get_chapter_sections(chapter_id: int) -> list:
+    """扫描 01-章节笔记/ 获取指定章的所有小节。返回 [{lesson, title, file_path}]"""
+    sections = []
+    if not NOTE_DIR.exists():
+        return sections
+
+    prefix = f"{chapter_id}."
+    for subdir in NOTE_DIR.iterdir():
+        if not subdir.is_dir():
+            continue
+        for f in subdir.iterdir():
+            if not f.suffix == ".md":
+                continue
+            if not f.name.startswith(prefix):
+                continue
+            # 解析 YAML frontmatter 提取 lesson 和 title
+            lesson, title = _parse_section_frontmatter(f)
+            if lesson:
+                sections.append({"lesson": lesson, "title": title, "file_path": f})
+
+    # 按 lesson 编号排序 (如 "9.1" < "9.2")
+    sections.sort(key=lambda s: [int(x) for x in s["lesson"].split(".")])
+    return sections
+
+
+def _parse_section_frontmatter(file_path: Path) -> tuple:
+    """解析小节 MD 的 YAML frontmatter，返回 (lesson, title)"""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return "", ""
+    if not content.startswith("---"):
+        return "", ""
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return "", ""
+
+    fm = parts[1]
+    lesson = ""
+    title = ""
+    for line in fm.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("lesson:"):
+            lesson = line.split(":", 1)[1].strip()
+        elif line.startswith("title:"):
+            title = line.split(":", 1)[1].strip()
+    return lesson, title
+
+
+def _extract_section_brief(file_path: Path) -> dict:
+    """提取小节 MD 的核心内容: 本节核心 + 考点整理 + 速记"""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return {"core": "", "exam_points": "", "quick_summary": ""}
+
+    # 去除 YAML frontmatter
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        body = parts[2] if len(parts) >= 3 else content
+    else:
+        body = content
+
+    def _extract_section(text: str, heading: str) -> str:
+        """提取指定 ## 标题下的内容 (到下一个 ## 或文件末尾)"""
+        pattern = rf"##\s+{re.escape(heading)}\s*\n(.+?)(?=\n##\s|\Z)"
+        m = re.search(pattern, text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+        return ""
+
+    return {
+        "core": _extract_section(body, "本节核心"),
+        "exam_points": _extract_section(body, "本节考点整理"),
+        "quick_summary": _extract_section(body, "本节速记"),
+    }
+
+
+def _build_section_quiz_ctx(section: dict, chapter_id: int) -> str:
+    """组装小节级出题上下文"""
+    brief = _extract_section_brief(section["file_path"])
+
+    return f"""请使用 /skill:review-assistant 中的题型模板。
+
+【单元学习】第{chapter_id}章
+【当前小节】{section['lesson']} {section['title']}
+【参考路径】{str(REFERENCE)}
+
+【小节核心】
+{brief['core'] or '（无）'}
+
+【考点整理】
+{brief['exam_points'] or '（无）'}
+
+【速记】
+{brief['quick_summary'] or '（无）'}
+
+---
+## 子任务: generate_question
+
+根据以上小节内容，生成 1 道正误判断题或单项选择题 (难度 S-U)。
+题目应直接关联该小节的考点。
+只输出题目文本。不要输出解析、答案或归档。"""
+
+
+def _build_chapter_review_ctx(chapter_id: int, sections: list) -> str:
+    """组装章节级综合回顾出题上下文"""
+    all_exam_points = []
+    for s in sections:
+        brief = _extract_section_brief(s["file_path"])
+        if brief["exam_points"]:
+            all_exam_points.append(f"### {s['lesson']} {s['title']}\n{brief['exam_points']}")
+
+    return f"""请使用 /skill:review-assistant 中的题型模板。
+
+【单元学习】第{chapter_id}章 — 章节综合回顾
+【已完成小节】{len(sections)} 个
+【参考路径】{str(REFERENCE)}
+
+【全章考点汇总】
+{chr(10).join(all_exam_points) if all_exam_points else '（无汇总考点）'}
+
+---
+## 子任务: generate_questions
+
+根据以上全章考点，生成 3 道跨小节的综合题目。
+- 难度递进: 1道 S-U + 1道 M-U + 1道 M-A
+- 题型: 判断 + 选择 + 简述 各 1 题
+- 题目应综合多个小节的知识点
+
+请一次性输出3道题，用【题1】【题2】【题3】编号。只输出题目文本。"""
+
+
+def _unit_study_loop():
+    """单元学习主循环: 章节→小节推进→综合回顾"""
+    print(f"\n{'=' * 60}")
+    print("  📖 单元学习模式")
+    print(f"{'=' * 60}")
+
+    # 选择章节
+    while True:
+        ch = input("\n🎯 请输入章节号 (1-20, q 退出): ").strip()
+        if ch in ("q", "退出", ""):
+            return
+        if ch.isdigit() and 1 <= int(ch) <= 20:
+            chapter_id = int(ch)
+            break
+        print("   ⚠️ 请输入 1-20 之间的数字")
+
+    sections = _get_chapter_sections(chapter_id)
+    if not sections:
+        print(f"\n⚠️ 未找到第{chapter_id}章的章节笔记。")
+        print(f"   请确认 reference/01-章节笔记/ 目录中存在 {chapter_id}.X 开头的文件。")
+        return
+
+    # 显示小节列表
+    print(f"\n📚 第{chapter_id}章 — 共 {len(sections)} 个小节:")
+    for i, s in enumerate(sections, 1):
+        print(f"   {i}. [{s['lesson']}] {s['title']}")
+    print(f"\n💡 每个小节: 阅读内容 → 做 1 道题 → 下一小节")
+    cont = input("按 Enter 开始 (q 退出): ").strip()
+    if cont in ("q", "退出"):
+        return
+
+    # ─── 小节循环 ───
+    session = init_session(f"单元学习-第{chapter_id}章")
+    section_quiz_count = 0
+
+    for i, s in enumerate(sections, 1):
+        brief = _extract_section_brief(s["file_path"])
+
+        # 展示小节内容
+        print(f"\n{'─' * 50}")
+        print(f"  📖 [{i}/{len(sections)}] {s['lesson']} {s['title']}")
+        print(f"{'─' * 50}")
+
+        if brief["core"]:
+            print(f"\n💡 本节核心:\n{brief['core']}")
+        if brief["exam_points"]:
+            print(f"\n📝 考点整理:\n{brief['exam_points']}")
+        if brief["quick_summary"]:
+            print(f"\n⚡ 速记:\n{brief['quick_summary']}")
+
+        # 小节测试
+        print(f"\n{'─' * 50}")
+        skip = input("输入「跳过」跳过本题，Enter 开始做题: ").strip()
+        if skip in ("跳过", "skip"):
+            continue
+
+        # 生成小节题目
+        print("  🤔 正在生成小节测试题...")
+        quiz_ctx = _build_section_quiz_ctx(s, chapter_id)
+        question_text = call_pi(quiz_ctx, timeout=60)
+        print(f"\n{question_text}")
+        print(f"{'─' * 50}")
+
+        # 作答
+        while True:
+            user_answer = input("\n✏️  你的答案: ").strip()
+            if user_answer == "":
+                print("   ⚠️ 请输入答案 (或 skip 跳过)")
+                continue
+            break
+
+        if user_answer in ("跳过", "skip"):
+            continue
+
+        # 判题
+        question_obj = {
+            "question_id": generate_question_id(),
+            "knowledge_points": [],
+            "difficulty": "S-U",
+            "type": "choice",
+            "question_text": question_text,
+        }
+        grade_ctx = build_grade_context(question_obj, user_answer)
+        print(f"\n{'─' * 50}")
+        grading_result = call_pi(grade_ctx, timeout=60)
+        print(f"\n{grading_result}")
+        print(f"{'─' * 50}")
+
+        # 可选追问
+        discussion_history = []
+        while True:
+            cmd = input("\n💬 (追问 / Enter继续 / q退出): ").strip()
+            if cmd == "" or cmd == "继续":
+                break
+            elif cmd in ("退出", "q"):
+                return
+            else:
+                print("  🤔 (思考中...)")
+                discuss_ctx = build_discuss_context(question_obj, grading_result, cmd, discussion_history)
+                response = call_pi(discuss_ctx, timeout=60)
+                print(f"\n{response}")
+                discussion_history.append(f"[用户] {cmd}")
+                discussion_history.append(f"[助手] {response}")
+
+        # 快速归档
+        is_correct = "✅" in grading_result
+        _fast_archive(question_obj["question_id"], question_obj, user_answer, grading_result, is_correct, {})
+        section_quiz_count += 1
+
+    # ─── 章节综合回顾 ───
+    print(f"\n{'=' * 60}")
+    print(f"  🎯 第{chapter_id}章综合回顾")
+    print(f"   {len(sections)} 个小节完成 → 生成 3 道综合题")
+    print(f"{'=' * 60}")
+
+    input("\n按 Enter 开始综合回顾: ")
+
+    print("\n  🤔 正在生成综合题...")
+    review_ctx = _build_chapter_review_ctx(chapter_id, sections)
+    review_text = call_pi(review_ctx, timeout=90)
+    print(f"\n{review_text}")
+    print(f"{'─' * 50}")
+
+    # 逐题作答
+    # 用【题1】【题2】【题3】分割
+    questions = re.split(r"\n(?=【题\d】)", review_text)
+    if len(questions) <= 1:
+        # 尝试另一种分割
+        questions = re.split(r"(?=【题\d】)", review_text)
+    questions = [q.strip() for q in questions if q.strip()]
+
+    for qi, q_text in enumerate(questions[:3], 1):
+        print(f"\n{'─' * 50}")
+        print(f"  📝 综合题 {qi}/3")
+        print(f"{'─' * 50}")
+        print(f"\n{q_text}")
+
+        while True:
+            user_answer = input("\n✏️  你的答案: ").strip()
+            if user_answer == "":
+                print("   ⚠️ 请输入答案 (或 skip 跳过)")
+                continue
+            break
+
+        if user_answer in ("跳过", "skip"):
+            continue
+
+        q_obj = {
+            "question_id": generate_question_id(),
+            "knowledge_points": [],
+            "difficulty": ["S-U", "M-U", "M-A"][qi - 1],
+            "type": ["judgment", "choice", "short_answer"][qi - 1],
+            "question_text": q_text,
+        }
+        grade_ctx = build_grade_context(q_obj, user_answer)
+        grading_result = call_pi(grade_ctx, timeout=60)
+        print(f"\n{grading_result}")
+
+        # 快速归档
+        is_correct = "✅" in grading_result
+        _fast_archive(q_obj["question_id"], q_obj, user_answer, grading_result, is_correct, {})
+
+    # ─── 结束 ───
+    end_session()
+    print(f"\n{'=' * 60}")
+    print(f"  ✅ 第{chapter_id}章单元学习完成!")
+    print(f"   小节测试: {section_quiz_count} 题 | 综合回顾: {len(questions[:3])} 题")
+    print(f"{'=' * 60}")
+
+
+# ═══════════════════════════════════════════
 # 交互式主循环
 # ═══════════════════════════════════════════
 
@@ -747,7 +1067,7 @@ def main():
     print("  📚 期末复习助手 — 面向对象程序设计 (C++)")
     print("=" * 60)
     print()
-    print("指令: 下一题(n) | 跳过(skip) | 提示(hint) | 总结(sum) | 退出(q)")
+    print("指令: 下一题(n) | 跳过(skip) | 提示(hint) | 更难(harder) | 总结(sum) | 退出(q)")
     print()
 
     # ─── 系统提示由 .pi/SYSTEM.md 自动加载，Skill 由 .pi/skills/ 自动发现 ───
@@ -807,13 +1127,19 @@ def main():
     print("\n📋 模式选择:")
     print("   1. 先看知识卡片，再做题")
     print("   2. 直接做题")
+    print("   3. 单元学习 (章节笔记 → 小节推进 → 综合回顾)")
     while True:
-        mode_choice = input("请选择 (1/2, 默认2): ").strip()
+        mode_choice = input("请选择 (1/2/3, 默认2): ").strip()
         if mode_choice == "":
             mode_choice = "2"
-        if mode_choice in ("1", "2"):
+        if mode_choice in ("1", "2", "3"):
             break
-        print("   ⚠️ 请输入 1 或 2")
+        print("   ⚠️ 请输入 1、2 或 3")
+
+    if mode_choice == "3":
+        _unit_study_loop()
+        return
+
     show_card = mode_choice == "1"
 
     # ─── 主循环 ───
@@ -940,7 +1266,7 @@ def main():
         discussion_history = []
         while True:
             print()
-            cmd = input("💬 (追问 / 下一题 / 提示): ").strip()
+            cmd = input("💬 (追问 / 下一题 / 提示 / 更难): ").strip()
 
             if cmd == "下一题" or cmd == "n":
                 # 归档 → 下一题
@@ -995,6 +1321,11 @@ def main():
                 discussion_history.append(f"[用户请求提示]")
                 discussion_history.append(f"[助手提示] {response}")
 
+            elif cmd in ("更难", "harder", "加难度"):
+                # 提升下一题难度，不影响当前题
+                update_session(_next_difficulty_up=True)
+                print("\n📈 已记录！下一题将提升难度。")
+
             else:
                 # 用户追问，Pi 讨论
                 print("  🤔 (思考中...)")
@@ -1015,52 +1346,81 @@ def main():
 
 
 def _generate_session_summary():
-    """生成会话总结"""
+    """生成会话总结报告到 summaries/ 目录"""
     session = end_session()
     if not session:
         print("\n👋 再见!")
         return
 
-    print(f"\n{'=' * 60}")
-    print("  📊 会话总结")
-    print(f"{'=' * 60}")
+    session_id = session.get("session_id", "unknown")
+    scope = session.get("scope", "N/A")
+    total = session.get("total_questions", 0)
+    correct = session.get("correct", 0)
+    incorrect = session.get("incorrect", 0)
 
+    print(f"\n{'=' * 60}")
+    print(f"  📊 会话总结")
+    print(f"{'=' * 60}")
     print(f"""
-  复习范围: {session.get('scope', 'N/A')}
-  完成题目: {session.get('total_questions', 0)} 题
-  正确: {session.get('correct', 0)} 题
-  错误: {session.get('incorrect', 0)} 题
+  复习范围: {scope}
+  完成题目: {total} 题
+  正确: {correct} 题 | 错误: {incorrect} 题
   正确率: {_calc_accuracy(session):.0%}
 """)
 
-    # 调用 Pi 生成全局复盘
-    wrong_book = load_json(WRONG_BOOK_FILE)
-    recent_entries = wrong_book["entries"][-10:]
-    chains = load_json(KNOWLEDGE_CHAINS_FILE)
+    # ─── 收集本次 session 的所有归档 ───
+    session_dir = SESSION_ARCHIVE_DIR / session_id
+    archives = []
+    if session_dir.exists():
+        for json_file in sorted(session_dir.glob("*.json")):
+            try:
+                archives.append(load_json(json_file))
+            except Exception:
+                pass
 
-    summary_prompt = f"""根据本次复习会话的数据，生成一份全局复盘报告。
+    if not archives:
+        print("\n  ⚠️ 暂无题目归档，跳过总结报告。")
+        print(f"\n{'=' * 60}")
+        print("  👋 再见!")
+        print(f"{'=' * 60}")
+        return
 
-【会话数据】
-{json.dumps(session, ensure_ascii=False, indent=2)}
+    # ─── 调用 Pi 生成总结报告 ───
+    print(f"\n  📝 正在生成总结报告 (基于 {len(archives)} 道题目归档)...\n")
 
-【近期错题】
-{json.dumps(recent_entries, ensure_ascii=False, indent=2) if recent_entries else '无错题'}
+    summary_prompt = f"""请使用 /skill:review-assistant 中的总结报告模板。
 
-【已建立的知识链】
-{json.dumps(chains['chains'][-5:], ensure_ascii=False, indent=2) if chains['chains'] else '无'}
+【会话概要】
+- 范围: {scope}
+- 完成: {total} 题 (正确 {correct}, 错误 {incorrect})
+- 正确率: {_calc_accuracy(session):.0%}
 
-请输出:
-1. 本会话整体评价
-2. 薄弱环节分析
-3. 已构建的知识体系概览
-4. 下次复习建议"""
+【题目归档列表】
+{json.dumps(archives, ensure_ascii=False, indent=2)}
 
-    print("\n  正在生成全局复盘...\n")
-    report = call_pi(summary_prompt, timeout=90)
+请按 skill 中的「总结报告」格式生成一份完整的 MD 总结报告。
+包含: 总体评价、逐题回顾、薄弱环节、知识体系、下次建议。"""
+
+    report = call_pi(summary_prompt, timeout=120)
     print(report)
+
+    # ─── 保存总结报告 ───
+    SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+    date_str = datetime.now().strftime("%Y%m%d")
+    summary_path = SUMMARY_DIR / f"{session_id}_总结.md"
+    summary_path.write_text(report, encoding="utf-8")
+
+    print(f"\n  ✅ 总结报告已保存: summaries/{summary_path.name}")
     print(f"\n{'=' * 60}")
     print("  👋 会话结束，加油复习!")
     print(f"{'=' * 60}")
+
+
+def _get_current_session_id() -> str:
+    """获取当前会话 ID"""
+    progress = load_json(PROGRESS_FILE)
+    session = progress.get("current_session", {}) or {}
+    return session.get("session_id", "unknown")
 
 
 def _calc_accuracy(session: dict) -> float:
