@@ -1,0 +1,275 @@
+{
+  "course": "面向对象程序设计",
+  "chapters": {
+    "9": {
+      "title": "对象拷贝与赋值",
+      "knowledge_points": [
+        {
+          "id": "copy-constructor",
+          "name": "拷贝构造函数",
+          "chapter": 9,
+          "aliases": ["copy constructor", "复制构造函数"],
+          "tags": ["对象拷贝", "构造函数", "const引用"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "prerequisites": ["class-object", "constructor"],
+          "related": ["deep-copy", "shallow-copy", "assignment-operator", "destructor"],
+          "wiki_links": ["拷贝构造函数", "对象的拷贝", "深拷贝", "浅拷贝", "缺省拷贝构造函数"],
+          "common_misconceptions": [
+            "分不清拷贝构造和赋值的触发时机",
+            "认为 A a2 = a1; 是赋值而不是拷贝构造",
+            "不知道按值传参会触发拷贝构造"
+          ],
+          "exam_patterns": [
+            "给一段代码，判断哪行触发拷贝构造",
+            "考察拷贝构造函数参数为什么是 const T&",
+            "简述拷贝构造和赋值的区别"
+          ],
+          "generation_hints": "重点考察触发时机判断: 新对象创建 = 拷贝构造，已有对象 = 赋值。代码示例中混用 = 初始化语法来制造陷阱。"
+        },
+        {
+          "id": "shallow-copy",
+          "name": "浅拷贝",
+          "chapter": 9,
+          "aliases": ["shallow copy", "浅复制", "按位拷贝"],
+          "tags": ["对象拷贝", "指针", "堆区", "重复释放"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "prerequisites": ["pointer", "heap", "copy-constructor"],
+          "related": ["deep-copy", "default-copy-constructor", "double-free", "destructor"],
+          "wiki_links": ["浅拷贝", "缺省拷贝构造函数", "深拷贝", "重复释放", "指针", "堆区"],
+          "common_misconceptions": [
+            "认为浅拷贝就是逐字节内存复制",
+            "不知道对象类型成员会调用其拷贝构造函数",
+            "不知道静态数据成员不参与拷贝",
+            "认为浅拷贝总是错误的"
+          ],
+          "exam_patterns": [
+            "选择题: 给一个含指针成员的类，问浅拷贝后会出现什么问题",
+            "正误判断: 浅拷贝拷贝静态数据成员 (错误)",
+            "简述题: 为什么有指针成员的类不能依赖浅拷贝"
+          ],
+          "generation_hints": "重点考察浅拷贝的后果: 指针共享 + 重复释放。可以出代码分析题，让用户指出问题所在。"
+        },
+        {
+          "id": "deep-copy",
+          "name": "深拷贝",
+          "chapter": 9,
+          "aliases": ["deep copy", "深复制"],
+          "tags": ["对象拷贝", "指针", "资源管理", "RAII"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "prerequisites": ["shallow-copy", "copy-constructor", "heap", "new-operator"],
+          "related": ["shallow-copy", "custom-copy-constructor", "custom-assignment-operator", "RAII"],
+          "wiki_links": ["深拷贝", "浅拷贝", "拷贝构造函数", "自定义拷贝构造函数", "RAII"],
+          "common_misconceptions": [
+            "不知道深拷贝需要手动 new 新资源",
+            "认为深拷贝自动处理所有情况"
+          ],
+          "exam_patterns": [
+            "选择题: 哪个代码实现了深拷贝",
+            "简述题: 深拷贝和浅拷贝的区别及各自适用场景"
+          ],
+          "generation_hints": "深拷贝通常和浅拷贝对比出题，也常结合运算符重载出题。考察点在于'重新申请资源并复制内容'这步。"
+        },
+        {
+          "id": "default-copy-constructor",
+          "name": "缺省拷贝构造函数",
+          "chapter": 9,
+          "aliases": ["默认拷贝构造函数", "编译器生成的拷贝构造函数"],
+          "tags": ["对象拷贝", "编译器行为"],
+          "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-R",
+          "prerequisites": ["copy-constructor", "shallow-copy"],
+          "related": ["shallow-copy", "custom-copy-constructor", "default-constructor"],
+          "wiki_links": ["缺省拷贝构造函数", "浅拷贝", "自定义拷贝构造函数"],
+          "common_misconceptions": [
+            "不知道编译器什么时候提供、什么时候不提供缺省拷贝构造函数"
+          ],
+          "exam_patterns": [
+            "正误判断: 编译器总会生成拷贝构造函数 (错误，有自定义构造函数时仍可能生成)",
+            "选择题: 什么时候必须自定义拷贝构造函数"
+          ]
+        },
+        {
+          "id": "custom-copy-constructor",
+          "name": "自定义拷贝构造函数",
+          "chapter": 9,
+          "aliases": ["自定义的拷贝构造函数"],
+          "tags": ["对象拷贝", "深拷贝", "资源管理"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "prerequisites": ["copy-constructor", "deep-copy", "new-operator"],
+          "related": ["deep-copy", "custom-assignment-operator", "self-assignment"],
+          "wiki_links": ["自定义拷贝构造函数", "深拷贝", "拷贝构造函数", "9.4 使用自定义拷贝构造函数"],
+          "common_misconceptions": [
+            "忘记参数必须是 const T&",
+            "按值传参导致无限递归"
+          ],
+          "exam_patterns": [
+            "给代码填空: 补全自定义拷贝构造函数",
+            "选择题: 以下自定义拷贝构造函数哪处有误",
+            "简述题: 自定义拷贝构造函数的要点"
+          ]
+        },
+        {
+          "id": "object-assignment",
+          "name": "对象赋值",
+          "chapter": 9,
+          "aliases": ["赋值", "assignment"],
+          "tags": ["对象赋值", "赋值函数", "浅赋值"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "prerequisites": ["class-object", "copy-constructor"],
+          "related": ["copy-constructor", "shallow-assignment", "custom-assignment-operator", "self-assignment"],
+          "wiki_links": ["对象赋值", "赋值函数", "浅赋值", "拷贝构造函数"],
+          "common_misconceptions": [
+            "混淆赋值和拷贝构造的触发时机",
+            "不知道 A a2 = a1; 是拷贝构造而不是赋值",
+            "不知道引用成员会影响赋值函数"
+          ],
+          "exam_patterns": [
+            "给一段代码，判断哪行是赋值、哪行是拷贝构造",
+            "正误判断: A a2 = a1; 调用了赋值函数 (错误)",
+            "简述题: 拷贝构造和赋值有什么区别"
+          ],
+          "generation_hints": "核心考点就是区分触发时机。多用 = 初始化来制造陷阱。也常和拷贝构造对比出题。"
+        },
+        {
+          "id": "shallow-assignment",
+          "name": "浅赋值",
+          "chapter": 9,
+          "aliases": ["shallow assignment"],
+          "tags": ["对象赋值", "指针", "内存泄漏", "重复释放"],
+          "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "prerequisites": ["object-assignment", "shallow-copy"],
+          "related": ["shallow-copy", "custom-assignment-operator", "memory-leak", "double-free"],
+          "wiki_links": ["浅赋值", "浅拷贝", "内存泄漏", "重复释放"],
+          "common_misconceptions": [
+            "只关注浅拷贝的问题，忽略了浅赋值同样有问题",
+            "不知道浅赋值会导致内存泄漏 (原资源丢失)"
+          ],
+          "exam_patterns": [
+            "选择题: 浅赋值后会出现什么后果",
+            "正误判断: 浅赋值不会导致内存泄漏 (错误)"
+          ],
+          "generation_hints": "注意和浅拷贝的对称性。浅赋值多一个内存泄漏问题 (原资源指针被覆盖)。"
+        },
+        {
+          "id": "custom-assignment-operator",
+          "name": "自定义赋值函数",
+          "chapter": 9,
+          "aliases": ["自定义的赋值函数", "operator="],
+          "tags": ["对象赋值", "深赋值", "自我赋值", "链式赋值"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "prerequisites": ["object-assignment", "deep-copy", "self-assignment"],
+          "related": ["self-assignment", "chain-assignment", "deep-copy", "custom-copy-constructor"],
+          "wiki_links": ["自定义赋值函数", "自我赋值", "链式赋值", "9.6 自定义赋值函数", "深拷贝"],
+          "common_misconceptions": [
+            "忘记检查自我赋值",
+            "忘记释放旧资源",
+            "返回类型写成 void 或 B 而不是 B&",
+            "返回 this 而不是 *this"
+          ],
+          "exam_patterns": [
+            "给代码填空: 补全 operator=",
+            "代码改错: 指出赋值函数中的问题",
+            "简述题: 自定义赋值函数需要注意什么"
+          ],
+          "generation_hints": "这是第9章最综合的考点。四个要素: (1)自我赋值检查 (2)释放旧资源 (3)复制新资源 (4)返回 *this。可以出代码分析题逐一考察。"
+        },
+        {
+          "id": "self-assignment",
+          "name": "自我赋值",
+          "chapter": 9,
+          "aliases": ["自赋值", "self assignment"],
+          "tags": ["对象赋值", "this指针", "安全性"],
+          "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "prerequisites": ["object-assignment", "this-pointer"],
+          "related": ["custom-assignment-operator", "this-pointer"],
+          "wiki_links": ["自我赋值", "this指针", "自定义赋值函数"],
+          "common_misconceptions": [
+            "认为自我赋值只会通过 a = a; 发生",
+            "不知道 B& b2 = b1; b1 = b2; 也是自我赋值"
+          ],
+          "exam_patterns": [
+            "正误判断: a = a 不会产生任何问题 (错误，可能导致资源丢失)",
+            "选择题: 为什么要检查自我赋值"
+          ],
+          "generation_hints": "注意引用别名导致的隐式自我赋值。考察为什么在释放旧资源前必须检查。"
+        },
+        {
+          "id": "copy-vs-assignment",
+          "name": "拷贝构造 vs 赋值",
+          "chapter": 9,
+          "aliases": ["拷贝vs赋值", "区分拷贝和赋值"],
+          "tags": ["对象拷贝", "对象赋值", "对比辨析"],
+          "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "prerequisites": ["copy-constructor", "object-assignment"],
+          "related": ["copy-constructor", "object-assignment", "shallow-copy", "shallow-assignment"],
+          "wiki_links": ["拷贝构造函数", "对象赋值", "浅拷贝", "浅赋值"],
+          "common_misconceptions": [
+            "用 = 就是赋值 (错误)",
+            "拷贝构造和赋值没有本质区别"
+          ],
+          "exam_patterns": [
+            "给多行代码，标记每行的操作类型 (拷贝构造/赋值/普通构造)",
+            "选择题: 以下说法正确的是",
+            "简述题: 从触发时机、函数签名、资源处理角度对比拷贝构造和赋值"
+          ],
+          "generation_hints": "这是区分型考点，适合出对比辨析题。用 = 初始化的陷阱是经典考法。"
+        }
+      ],
+      "knowledge_chain": [
+        {
+          "id": "chain-copy-to-assignment",
+          "name": "对象复制全链条",
+          "nodes": ["浅拷贝", "深拷贝", "拷贝构造函数", "缺省拷贝构造函数", "自定义拷贝构造函数", "对象赋值", "浅赋值", "自定义赋值函数", "自我赋值"],
+          "description": "从对象拷贝的基本概念出发，经过浅/深拷贝的区别，到拷贝构造函数的实现，再对称地展开赋值侧的内容，最终到达自定义赋值函数的四个要素和自我赋值检查。这是第9章的核心知识链。"
+        }
+      ]
+    }
+  },
+  "question_type_templates": {
+    "judgment": {
+      "name": "正误判断题",
+      "format": "判断以下说法是否正确: 「{statement}」",
+      "options": "正确 / 错误",
+      "difficulty_range": ["S-R", "S-U", "M-U"],
+      "generation_rule": "生成一个关于知识点的陈述，其中包含一个容易混淆的细节(正或误)。陈述应简短明确，不超过两句话。"
+    },
+    "choice": {
+      "name": "单项选择题",
+      "format": "题目描述 + 4个选项 (A/B/C/D)",
+      "options": "4个选项，其中1个正确，3个干扰项",
+      "difficulty_range": ["S-U", "M-U", "M-A"],
+      "generation_rule": "生成4个选项。正确选项要精准无歧义。干扰项应来自常见误区或关联知识点的混淆点，让用户需要真正理解才能区分。"
+    },
+    "short_answer": {
+      "name": "简述题",
+      "format": "开放式问题，用户用自然语言回答",
+      "options": "无固定选项",
+      "difficulty_range": ["M-A", "C-A"],
+      "generation_rule": "生成一个需要用户组织语言回答的问题。用户答案不需要和标准答案逐字匹配，但应覆盖关键要点。判题时按要点给分，并指出遗漏的部分。"
+    }
+  },
+  "exam_style_notes": {
+    "judgment_characteristics": "通常考察容易混淆的概念区分。常用陷阱: (1)用=就是赋值 (2)拷贝构造和赋值的触发时机 (3)const 和指针组合的正确用法。",
+    "choice_characteristics": "选项设计精巧，干扰项通常来自高频误区。常出现代码分析题，让用户判断某段代码的行为或问题。",
+    "short_answer_characteristics": "通常考察对比辨析或原理解释。需要用户用自然语言组织，但关键要点明确。不会要求写大量代码，侧重概念理解和分析。"
+  }
+}

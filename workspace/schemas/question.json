@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Question Schema",
+  "type": "object",
+  "required": ["question_id", "knowledge_points", "difficulty", "type", "question_text", "correct_answer", "explanation_l1"],
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "pattern": "^q_\\d{8}_\\d{3}$",
+      "description": "题目唯一ID，格式: q_YYYYMMDD_NNN"
+    },
+    "knowledge_points": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "考察的知识点ID列表"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["S-R", "S-U", "M-U", "M-A", "C-A"],
+      "description": "难度级别: 广度(S/M/C) × 认知层次(R/U/A)"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["judgment", "choice", "short_answer"],
+      "description": "题型"
+    },
+    "question_text": {
+      "type": "string",
+      "description": "题目文本"
+    },
+    "options": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "选项列表 (判断题为['正确','错误']，简述题为空数组)"
+    },
+    "correct_answer": {
+      "type": "string",
+      "description": "正确答案 (选择题为选项字母，判断题为'正确'/'错误'，简述题为要点列表)"
+    },
+    "explanation_l1": {
+      "type": "string",
+      "description": "Level 1 解析: 直接解释为什么这个答案正确/错误"
+    },
+    "related_knowledge_chain": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "关联知识链 (用于归档时生成 Level 3)"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Question Archive Schema",
+  "type": "object",
+  "required": ["question_id", "knowledge_points", "difficulty", "type", "timestamp", "question_text", "user_answer", "is_correct", "discussion_summary", "knowledge_chain_l3"],
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "pattern": "^q_\\d{8}_\\d{3}$"
+    },
+    "knowledge_points": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["S-R", "S-U", "M-U", "M-A", "C-A"]
+    },
+    "type": {
+      "type": "string",
+      "enum": ["judgment", "choice", "short_answer"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "question_text": { "type": "string" },
+    "options": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "user_answer": { "type": "string" },
+    "correct_answer": { "type": "string" },
+    "explanation_l1": { "type": "string" },
+    "is_correct": { "type": "boolean" },
+    "discussion_summary": {
+      "type": "object",
+      "required": ["core_misconception", "clarified_points", "lingering_questions"],
+      "properties": {
+        "core_misconception": {
+          "type": "string",
+          "description": "用户错误的根本原因"
+        },
+        "clarified_points": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "讨论中确认理解的知识点"
+        },
+        "user_self_correction": {
+          "type": "string",
+          "description": "用户在讨论中自己纠正的内容 (如有)"
+        },
+        "lingering_questions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "尚未解决或用户提到的遗留问题"
+        }
+      }
+    },
+    "knowledge_chain_l3": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Level 3 知识链条: 用 → 连接的知识点序列"
+    },
+    "suggestion_next": {
+      "type": "string",
+      "description": "后续复习建议"
+    }
+  }
+}
