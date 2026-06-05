@@ -1,12 +1,35 @@
 {
-  "current_session": null,
+  "current_session": {
+    "session_id": "s_2026-06-05T03-50-45-346911+00-00",
+    "started": "2026-06-05T03:50:45.346942+00:00",
+    "scope": "4",
+    "mode": "quiz",
+    "total_questions": 0,
+    "correct": 0,
+    "incorrect": 0,
+    "current_question_index": 1,
+    "covered_knowledge_points": [],
+    "remaining_knowledge_points": [
+      "pointer",
+      "reference",
+      "const-pointer",
+      "const-reference",
+      "oop-three-features",
+      "abstraction-representation",
+      "class-design-principles"
+    ],
+    "recent_weaknesses": [],
+    "last_lingering_question": null
+  },
   "history": {
     "total_questions_answered": 1,
     "total_correct": 1,
     "total_incorrect": 0,
     "chapters_covered": [
+      "2",
+      "3",
       "指针",
-      "2"
+      "10"
     ],
     "sessions": [
       {
@@ -23,6 +46,22 @@
         "scope": "指针",
         "total_questions": 1,
         "correct": 1,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T03-48-36-794532+00-00",
+        "date": "20260605",
+        "scope": "10",
+        "total_questions": 0,
+        "correct": 0,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T03-50-31-978752+00-00",
+        "date": "20260605",
+        "scope": "3",
+        "total_questions": 0,
+        "correct": 0,
         "incorrect": 0
       }
     ]

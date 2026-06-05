@@ -100,7 +100,7 @@ def generate_question_id() -> str:
 # Pi 调用
 # ═══════════════════════════════════════════
 
-def call_pi(prompt: str, timeout: int = 120) -> str:
+def call_pi(prompt: str, timeout: int = 90) -> str:
     """
     调用 Pi (--print 模式)。
     系统提示由 .pi/SYSTEM.md 自动加载，Skill 由 .pi/skills/ 自动发现。
@@ -109,7 +109,7 @@ def call_pi(prompt: str, timeout: int = 120) -> str:
         result = subprocess.run(
             [
                 PI_EXE, "-p",           # 非交互 print 模式
-                "--model", "deepseek-flash",  # 快速模型
+                "--model", "deepseek-v4-flash",  # 快速模型
                 "-nbt",                  # 禁用内置工具 (bash/edit/write)
                 "--tools", "read",       # 只开放 read
                 "--no-session",          # 不保存 session
@@ -289,7 +289,12 @@ def _get_kp_ids_for_scope(scope: str) -> list:
                 f"{' '.join(kp_tags)}"
             )
             for kw in keywords:
-                if kw in search_text:
+                # 纯数字 keyword: 精确匹配 chapter_id，防止 "3" 误匹配 "13"
+                if kw.isdigit():
+                    if kw == chapter_id:
+                        kp_ids.append(kp["id"])
+                        break
+                elif kw in search_text:
                     kp_ids.append(kp["id"])
                     break
     return list(dict.fromkeys(kp_ids))  # 去重保序
@@ -713,10 +718,10 @@ def _load_concept_card(kp_name: str) -> str | None:
         content = exact_path.read_text(encoding="utf-8")
         return _strip_frontmatter(content)
 
-    # 2. 模糊匹配: 遍历目录，查找包含知识点名称的文件
+    # 2. 模糊匹配: 遍历目录，双向匹配 (文件名包含KP名 或 KP名包含文件名)
     if CARD_DIR.exists():
         for f in CARD_DIR.iterdir():
-            if f.suffix == ".md" and kp_name in f.stem:
+            if f.suffix == ".md" and (kp_name in f.stem or f.stem in kp_name):
                 content = f.read_text(encoding="utf-8")
                 return _strip_frontmatter(content)
 
@@ -870,8 +875,15 @@ def main():
 
 ### 易错提醒
 （常见误区）"""
-                response = call_pi(card_prompt)
-                print(response)
+                print("  📖 正在生成知识卡片...")
+                response = call_pi(card_prompt, timeout=30)
+                if response:
+                    print(response)
+                else:
+                    print(f"\n⚠️ 卡片生成失败，以下是基本信息：\n")
+                    print(f"**{kp['name']}**（第{kp['chapter']}章）")
+                    print(f"常见误区: {', '.join(kp.get('common_misconceptions', [])[:3]) or '无'}")
+                    print(f"\n💡 建议查阅 reference/02-概念卡片/ 目录获取详细内容。")
             print(f"\n{'─' * 50}")
 
             print("\n💡 输入任意内容开始做题 | 输入「跳过」进入下一个知识点")
@@ -892,7 +904,7 @@ def main():
         gen_ctx = build_context(kp, difficulty, question_type)
         print(f"\n{'─' * 50}")
         print("  🤔 正在生成题目...")
-        question_text = call_pi(gen_ctx)
+        question_text = call_pi(gen_ctx, timeout=60)
         print(f"\n{question_text}")
         print(f"{'─' * 50}")
 
@@ -920,7 +932,7 @@ def main():
         }
         grade_ctx = build_grade_context(question_obj, user_answer)
         print(f"\n{'─' * 50}")
-        grading_result = call_pi(grade_ctx)
+        grading_result = call_pi(grade_ctx, timeout=60)
         print(f"\n{grading_result}")
         print(f"{'─' * 50}")
 
@@ -943,7 +955,7 @@ def main():
                         question_obj, user_answer, grading_result,
                         discussion_history, session.get("current_question_index", 0),
                     )
-                    archive_output = call_pi(archive_ctx, timeout=180)
+                    archive_output = call_pi(archive_ctx, timeout=90)
                     parse_and_save_archive(archive_output, question_id)
                 # 持久化讨论历史
                 if discussion_history:
@@ -963,7 +975,7 @@ def main():
                         question_obj, user_answer, grading_result,
                         discussion_history, session.get("current_question_index", 0),
                     )
-                    archive_output = call_pi(archive_ctx, timeout=180)
+                    archive_output = call_pi(archive_ctx, timeout=90)
                     parse_and_save_archive(archive_output, question_id)
                 if discussion_history:
                     update_session(last_discussion=discussion_history[-4:])
@@ -978,7 +990,7 @@ def main():
 【参考路径】{str(REFERENCE)}
 【题目】{question_text}
 用户请求提示 (给一个引导性的提示帮助思考，不要直接给出答案)。"""
-                response = call_pi(hint_prompt)
+                response = call_pi(hint_prompt, timeout=30)
                 print(f"\n💡 {response}")
                 discussion_history.append(f"[用户请求提示]")
                 discussion_history.append(f"[助手提示] {response}")
@@ -989,7 +1001,7 @@ def main():
                 discuss_ctx = build_discuss_context(
                     question_obj, grading_result, cmd, discussion_history
                 )
-                response = call_pi(discuss_ctx)
+                response = call_pi(discuss_ctx, timeout=60)
                 print(f"\n{response}")
                 discussion_history.append(f"[用户] {cmd}")
                 discussion_history.append(f"[助手] {response}")
@@ -1044,7 +1056,7 @@ def _generate_session_summary():
 4. 下次复习建议"""
 
     print("\n  正在生成全局复盘...\n")
-    report = call_pi(summary_prompt, timeout=180)
+    report = call_pi(summary_prompt, timeout=90)
     print(report)
     print(f"\n{'=' * 60}")
     print("  👋 会话结束，加油复习!")
