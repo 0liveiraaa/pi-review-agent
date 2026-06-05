@@ -81,6 +81,9 @@ export function buildQuestionPrompt({
 }) {
   const typeLine = questionType ? `题型: ${questionType}` : "题型: 根据知识点选择 judgment/choice/multi_choice/short_answer";
   return [
+    "请先使用 /skill:review-core 读取复习助手主规则。",
+    "本回合通常需要按阶段参考 /skill:review-question、/skill:review-grade、/skill:review-discuss、/skill:review-summary。",
+    "",
     `请作为 ${courseName} 复习助手开始一次结构化复习回合。`,
     `模式: ${mode}`,
     scope ? `范围: ${scope}` : "",

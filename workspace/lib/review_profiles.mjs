@@ -34,6 +34,19 @@ function safeRelativePath(value) {
   return rel;
 }
 
+function hasPathTraversal(value) {
+  return String(value || "").replace(/\\/g, "/").split("/").some((part) => part === "..");
+}
+
+function validateProfilePathModel(profile, paths) {
+  if (profile.layout === "legacy-bridge") return;
+  for (const [key, value] of Object.entries(paths)) {
+    if (hasPathTraversal(value)) {
+      throw new Error(`Non legacy profile path cannot contain '..': ${key}`);
+    }
+  }
+}
+
 export function getProfilesRoot(config = loadReviewConfig()) {
   return config.profilesDirAbs;
 }
@@ -61,6 +74,7 @@ export function hydrateProfile(profile, config = loadReviewConfig()) {
     sourceMap: profile.paths?.sourceMap || "source_map.json",
     qualityReport: profile.paths?.qualityReport || "quality_report.md",
   };
+  validateProfilePathModel(profile, paths);
   return {
     ...profile,
     subjectId,
@@ -83,7 +97,12 @@ export function listProfiles(status, config = loadReviewConfig()) {
   const profiles = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const profile = loadProfile(entry.name, config);
+    let profile;
+    try {
+      profile = loadProfile(entry.name, config);
+    } catch {
+      continue;
+    }
     if (!profile) continue;
     if (status && profile.status !== status) continue;
     profiles.push(profile);
@@ -140,6 +159,7 @@ export function createDraftProfile({ subjectId, name, sourceDir }, config = load
 export function writeProfileFile(subjectId, relPath, content, config = loadReviewConfig()) {
   const profile = loadProfile(subjectId, config);
   if (!profile) throw new Error(`Profile not found: ${subjectId}`);
+  if (profile.status !== "draft") throw new Error(`Refusing to write non-draft profile: ${subjectId}`);
   const safePath = safeRelativePath(relPath);
   const target = resolve(profile.root, safePath);
   const root = resolve(profile.root);

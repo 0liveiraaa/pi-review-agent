@@ -2,6 +2,8 @@
 
 默认 C++ 资料包已启用。
 
+本 profile 是 `legacy-bridge`：它桥接并复用项目中已经存在的 C++ 资料目录，不代表 `/review-init` 生成的新跨科目 profile 标准结构。
+
 - 知识点索引来源：`workspace/data/knowledge_index.json`
 - 章节笔记来源：`reference/01-章节笔记`
 - 概念卡片来源：`reference/02-概念卡片`

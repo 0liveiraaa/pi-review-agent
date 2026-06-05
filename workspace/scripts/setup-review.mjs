@@ -1,23 +1,60 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-const projectRoot = resolve(import.meta.dirname, "..", "..");
+const workspaceRoot = resolve(import.meta.dirname, "..");
 const required = [
   ".pi/extensions/review/index.ts",
   ".pi/review.config.json",
-  "workspace/lib/review_profiles.mjs",
+  "lib/review_profiles.mjs",
+];
+const requiredSkills = [
+  "review-core",
+  "review-question",
+  "review-grade",
+  "review-discuss",
+  "review-summary",
+  "review-init",
+  "review-fix",
 ];
 
 let ok = true;
+const sourceSkillsDir = resolve(workspaceRoot, "docs/review-kit/skills");
+const targetSkillsDir = resolve(workspaceRoot, ".pi/skills");
+
+if (existsSync(sourceSkillsDir)) {
+  mkdirSync(targetSkillsDir, { recursive: true });
+  for (const entry of readdirSync(sourceSkillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const source = join(sourceSkillsDir, entry.name);
+    const target = join(targetSkillsDir, entry.name);
+    if (!existsSync(target)) {
+      cpSync(source, target, { recursive: true });
+      console.log(`Installed missing skill template: ${entry.name}`);
+    }
+  }
+} else {
+  ok = false;
+  console.error("Missing: docs/review-kit/skills");
+}
+
 for (const rel of required) {
-  const path = resolve(projectRoot, rel);
+  const path = resolve(workspaceRoot, rel);
   if (!existsSync(path)) {
     ok = false;
     console.error(`Missing: ${rel}`);
   }
 }
 
-const profilesDir = resolve(projectRoot, "workspace/review_profiles");
+for (const skill of requiredSkills) {
+  const rel = `.pi/skills/${skill}/SKILL.md`;
+  const path = resolve(workspaceRoot, rel);
+  if (!existsSync(path)) {
+    ok = false;
+    console.error(`Missing: ${rel}`);
+  }
+}
+
+const profilesDir = resolve(workspaceRoot, "review_profiles");
 if (!existsSync(profilesDir)) mkdirSync(profilesDir, { recursive: true });
 
 if (!ok) {
@@ -25,8 +62,8 @@ if (!ok) {
 } else {
   console.log("Review assistant setup checks passed.");
   console.log("");
-  console.log("Start pi from the project root:");
-  console.log('  cd "C:\\Users\\25173\\Desktop\\面向对象程序设计"');
+  console.log("Start pi from the workspace directory:");
+  console.log(`  cd "${workspaceRoot}"`);
   console.log("  pi");
   console.log("");
   console.log("Then use:");
