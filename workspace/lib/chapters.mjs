@@ -1,5 +1,5 @@
 // 章节笔记解析 — 扫描 01-章节笔记/
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NOTE_DIR } from "./state.mjs";
 
@@ -14,8 +14,7 @@ export function getChapterSections(chapterId) {
   for (const subdir of readdirSync(NOTE_DIR)) {
     const subPath = join(NOTE_DIR, subdir);
     if (!existsSync(subPath)) continue;
-    const stat = readdirSync(subPath, { withFileTypes: true }) || [];
-    // readdirSync with path returns just names, need to check full path
+    if (!statSync(subPath).isDirectory()) continue;
     try {
       const files = readdirSync(subPath);
       for (const f of files) {

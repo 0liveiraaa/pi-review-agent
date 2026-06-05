@@ -1,5 +1,20 @@
 {
-  "current_session": null,
+  "current_session": {
+    "session_id": "s_2026-06-05T15-50-09-914Z",
+    "started": "2026-06-05T15:50:09.914Z",
+    "scope": "第1章",
+    "mode": "quiz",
+    "total_questions": 0,
+    "correct": 0,
+    "incorrect": 0,
+    "current_question_index": 0,
+    "question_sequence": 0,
+    "covered_knowledge_points": [],
+    "remaining_knowledge_points": [
+      "programming-paradigms",
+      "oop-basics"
+    ]
+  },
   "history": {
     "total_questions_answered": 16,
     "total_correct": 15,

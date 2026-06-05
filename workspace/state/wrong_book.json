@@ -6,10 +6,17 @@
       "error_type": "概念混淆",
       "error_detail": "（见复盘）",
       "timestamp": "2026-06-05T12:38:20.227Z"
+    },
+    {
+      "question_id": "q_20260605_017",
+      "knowledge_points": [],
+      "error_type": "概念混淆",
+      "error_detail": "误以为初始化列表的顺序决定了执行顺序，实际 C++ 严格按继承列表声明顺序构造基类",
+      "timestamp": "2026-06-05T15:43:32.605Z"
     }
   ],
   "error_type_stats": {
-    "概念混淆": 1,
+    "概念混淆": 2,
     "知识遗漏": 0,
     "推理错误": 0,
     "粗心失误": 0

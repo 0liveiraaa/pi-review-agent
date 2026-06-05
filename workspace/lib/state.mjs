@@ -1,5 +1,5 @@
 // 状态文件读写 — 与 Python 版本保持 schema 兼容
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,6 +60,7 @@ export function initSession(scope, kpIds) {
     correct: 0,
     incorrect: 0,
     current_question_index: 0,
+    question_sequence: 0,
     covered_knowledge_points: [],
     remaining_knowledge_points: kpIds,
   };
@@ -251,10 +252,28 @@ export function selectQuestionType(kp) {
 export function generateQuestionId() {
   const progress = loadProgress();
   const today = dateStr();
-  const sessions = progress.history?.sessions || [];
-  const todaySessions = sessions.filter((s) => s.date === today);
-  const count = todaySessions.reduce((sum, s) => sum + (s.total_questions || 0), 0) + 1;
-  return `q_${today}_${String(count).padStart(3, "0")}`;
+  let max = 0;
+
+  if (existsSync(SESSION_ARCHIVE_DIR)) {
+    for (const sessionDir of readdirSync(SESSION_ARCHIVE_DIR, { withFileTypes: true })) {
+      if (!sessionDir.isDirectory()) continue;
+      const dir = join(SESSION_ARCHIVE_DIR, sessionDir.name);
+      for (const file of readdirSync(dir)) {
+        const m = file.match(new RegExp(`^q_${today}_(\\d{3})\\.json$`));
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+    }
+  }
+
+  const current = progress.current_session;
+  const seq = current?.question_sequence || 0;
+  const next = Math.max(max, seq) + 1;
+  if (current) {
+    current.question_sequence = next;
+    progress.current_session = current;
+    saveProgress(progress);
+  }
+  return `q_${today}_${String(next).padStart(3, "0")}`;
 }
 
 // ─── 错题分类 ───
@@ -361,7 +380,12 @@ export function updateStateFromArchive(archive) {
 
 // ─── 类型名 ───
 export function typeName(t) {
-  return { judgment: "正误判断题", choice: "单项选择题", short_answer: "简述题" }[t] || t;
+  return {
+    judgment: "正误判断题",
+    choice: "单项选择题",
+    multi_choice: "多项选择题",
+    short_answer: "简述题",
+  }[t] || t;
 }
 
 // ─── 正确率 ───

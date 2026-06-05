@@ -5,10 +5,14 @@
   "type": "module",
   "main": "review_cli.mjs",
   "scripts": {
-    "start": "node review_cli.mjs"
+    "start": "node review_cli.mjs",
+    "check": "node --check review_cli.mjs && node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs",
+    "test": "node --test test/review_core.test.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.78.0",
-    "marked": "^18.0.5"
+    "@earendil-works/pi-tui": "0.78.0",
+    "marked": "^18.0.5",
+    "typebox": "1.1.38"
   }
 }
