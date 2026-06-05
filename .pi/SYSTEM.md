@@ -40,6 +40,13 @@ reference/
 │   ├── 6.6/
 │   └── 6.7/
 └── 历年考试题/
+
+workspace/archive/
+├── sessions/{session_id}/    # 每次会话的题目归档 (JSON+MD)
+│   ├── q_*.json               # 每题复盘 JSON
+│   └── q_*.md                 # 每题归档 MD
+└── summaries/                 # 会话总结报告
 ```
 
-阅读文件时直接使用文件路径，如: `reference/01-章节笔记/6.6/11.1 存储空间.md`
+阅读文件时直接使用文件路径，如: `reference/01-章节笔记/1/11.1 存储空间.md`
+历史复盘可通过 `workspace/archive/sessions/{session_id}/` 查阅建议阅读后掌握学习者情况后再进行出题。

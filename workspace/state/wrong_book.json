@@ -1,7 +1,15 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "question_id": "q_20260605_003",
+      "knowledge_points": [],
+      "error_type": "概念混淆",
+      "error_detail": "（见复盘）",
+      "timestamp": "2026-06-05T12:38:20.227Z"
+    }
+  ],
   "error_type_stats": {
-    "概念混淆": 0,
+    "概念混淆": 1,
     "知识遗漏": 0,
     "推理错误": 0,
     "粗心失误": 0

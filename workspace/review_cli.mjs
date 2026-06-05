@@ -25,12 +25,17 @@ async function smartAnswerInput(questionText) {
   const optionPattern = /^([A-D])\.\s+(.+)$/gm;
   const matches = [...questionText.matchAll(optionPattern)];
   if (matches.length >= 2) {
+    const validLetters = matches.map((m) => m[1]);
     const options = matches.map((m) => `${m[1]}. ${m[2]}`);
-    printOptions(options, "请选择答案 (输入字母):");
+    printOptions(options, `请选择答案 (${validLetters.join('/')}, 支持多选如BD):`);
     while (true) {
-      const ans = (await question('\n  > ')).trim().toUpperCase();
-      if (matches.find((m) => m[1] === ans)) return ans;
-      console.log(`  ⚠️ 请输入 ${matches.map(m => m[1]).join('/')}`);
+      const raw = (await question('\n  > ')).trim().toUpperCase();
+      // 解析多字母输入: "BD", "B D", "B,D", "B和D" → ["B","D"]
+      const letters = raw.replace(/[\s,、和及与]/g, '').split('').filter(c => c >= 'A' && c <= 'D');
+      if (letters.length >= 1 && letters.every(c => validLetters.includes(c))) {
+        return letters.join('');
+      }
+      console.log(`  ⚠️ 请输入 ${validLetters.join('/')} (支持多选, 如 BD)`);
     }
   }
   // 判断题或简述: 普通文本
@@ -46,6 +51,45 @@ function parseFupan(output) {
   const m = output.match(/```json\s*\n([\s\S]*?)\n```/);
   if (!m) return null;
   try { return JSON.parse(m[1]); } catch { return null; }
+}
+
+// ─── 统一归档保存 (出题→判题→复盘→归档→返回复盘) ───
+async function saveQuestion(questionText, userAnswer, grading, meta, sessionId) {
+  console.log('  📝 正在生成复盘...');
+  const fupanOut = await prompt([
+    `请用 /skill:review-summary 中的每题复盘格式生成复盘 JSON (用 \`\`\`json 包裹)。`,
+    meta.section ? `小节: ${meta.section}` : '',
+    meta.kpId ? `知识点 ID: ${meta.kpId}` : '',
+  ].filter(Boolean).join('\n'));
+  const fupan = parseFupan(fupanOut);
+  if (!fupan) return null;
+
+  const questionId = generateQuestionId();
+  const isCorrect = grading.includes('✅');
+  const archive = {
+    question_id: questionId,
+    knowledge_points: meta.kpId ? [meta.kpId] : [],
+    difficulty: meta.difficulty || "S-U",
+    type: meta.type || "choice",
+    timestamp: timestampNow(),
+    question_text: questionText,
+    user_answer: userAnswer,
+    correct_answer: grading,
+    explanation_l1: grading,
+    is_correct: isCorrect,
+    discussion_summary: {
+      core_misconception: fupan.error_root_cause || (isCorrect ? '无' : '（见复盘）'),
+      clarified_points: [],
+      user_self_correction: null,
+      lingering_questions: [],
+    },
+    knowledge_chain_l3: fupan.knowledge_chain || (meta.related || []).slice(0, 3),
+    suggestion_next: meta.suggestion || '继续加油！',
+    _fupan: fupan,
+  };
+  writeArchiveFiles(archive, questionId, sessionId);
+  updateStateFromArchive(archive);
+  return fupan;
 }
 
 // ═══ Main ═══
@@ -146,7 +190,12 @@ try {
       if (card) { divider(); mdTitle(`知识点卡片: ${kp.name}`); printMD(card); divider(); }
       else { divider(); console.log('  📖 正在生成知识卡片...'); await prompt(`请展示「${kp.name}」的复习卡片。`); divider(); }
       const cardCmd = (await question('\n💡 输入任意内容开始做题,「跳过」下一知识点: ')).trim();
-      if (cardCmd === '跳过' || cardCmd === 'skip') continue;
+      if (cardCmd === '跳过' || cardCmd === 'skip') {
+        // 标记已覆盖，下次不再选这个 KP
+        updateSession({ covered_knowledge_points: [...(session.covered_knowledge_points || []), kp.id] });
+        session = (loadProgress()).current_session;
+        continue;
+      }
       if (cardCmd === '总结' || cardCmd === 'sum') break;
       if (cardCmd === '退出' || cardCmd === 'q') { disposeSession(); process.exit(0); }
     }
@@ -186,46 +235,15 @@ try {
       else if (cmd) { console.log('  🤔'); await prompt(cmd); discussionCount++; }
     }
 
-    // ─── 复盘 ───
+    // ─── 复盘 + 归档 ───
     divider();
-    console.log('  📝 正在生成复盘...');
-    const fupanMsg = [
-      `请用 /skill:review-summary 中的每题复盘格式，生成这道题的复盘 JSON (用 \`\`\`json 包裹)。`,
-      `question_id: ${questionId}`,
-      `知识点的 ID: ${kp.id}`,
-    ].join('\n');
-    const fupanOutput = await prompt(fupanMsg);
-    const fupan = parseFupan(fupanOutput);
+    const fupan = await saveQuestion(questionText, userAnswer, gradingResult, {
+      kpId: kp.id, difficulty, type: qType,
+      related: kp.related,
+      suggestion: '继续加油！',
+    }, session.session_id);
+    if (fupan) sessionFuPan.push(fupan);
 
-    // 保存归档
-    if (fupan) {
-      const isCorrect = gradingResult.includes('✅');
-      const archive = {
-        question_id: questionId,
-        knowledge_points: [kp.id],
-        difficulty, type: qType,
-        timestamp: timestampNow(),
-        question_text: questionText,
-        user_answer: userAnswer,
-        correct_answer: gradingResult,
-        explanation_l1: gradingResult,
-        is_correct: isCorrect,
-        discussion_summary: {
-          core_misconception: fupan.error_root_cause || (isCorrect ? '无' : '（见复盘）'),
-          clarified_points: [],
-          user_self_correction: null,
-          lingering_questions: [],
-        },
-        knowledge_chain_l3: fupan.knowledge_chain || kp.related?.slice(0, 3) || [],
-        suggestion_next: '继续加油！',
-        _fupan: fupan,
-      };
-      writeArchiveFiles(archive, questionId, session.session_id);
-      updateStateFromArchive(archive);
-      sessionFuPan.push(fupan);
-    }
-
-    // ─── compact: 丢弃对话细节，保留 skill + 复盘 ───
     await compact();
     session = (loadProgress()).current_session;
   }
@@ -269,6 +287,7 @@ async function unitStudyLoop(chapterId) {
     `开始单元学习: 第${chapterId}章，共 ${sections.length} 个小节。`,
     `小节文件路径 (请逐节 Read 后简述+出题):`,
     sectionPaths,
+    `历史归档: workspace/archive/sessions/${session.session_id}/ (可查阅复盘记录)`,
     `流程: Read小节→简述内容→生成1道S-U题→用户作答→判题→复盘→compact→下一小节。`,
   ].join('\n'));
 
@@ -281,14 +300,20 @@ async function unitStudyLoop(chapterId) {
     console.log(`${'─'.repeat(50)}`);
 
     // Agent 自己 Read 小节 + 简述 + 出题
-    const resp = await prompt(`请 Read「reference/01-章节笔记/${relative(REFERENCE, s.filePath).replace(/\\/g, '/')}」, 简述本节内容，然后生成1道S-U级别的判断或选择题。`);
+    const resp = await prompt(`请 Read「reference/${relative(REFERENCE, s.filePath).replace(/\\/g, '/')}」, 简述本节内容，然后生成1道S-U级别的判断或选择题。`);
 
     // 作答
     const skip = (await question('\n输入「跳过」跳过, Enter 开始做题: ')).trim();
-    if (skip === '跳过' || skip === 'skip') continue;
+    if (skip === '跳过' || skip === 'skip') {
+      await prompt(`（用户跳过了 ${s.lesson} ${s.title}，请记录并进入下一小节。）`);
+      continue;
+    }
 
     const userAnswer = await smartAnswerInput(resp);
-    if (userAnswer === '跳过' || userAnswer === 'skip') continue;
+    if (userAnswer === '跳过' || userAnswer === 'skip') {
+      await prompt(`（用户跳过了本题，进入下一小节。）`);
+      continue;
+    }
     if (userAnswer === '退出' || userAnswer === 'q') { disposeSession(); process.exit(0); }
 
     // 判题
@@ -303,44 +328,42 @@ async function unitStudyLoop(chapterId) {
       await prompt(c);
     }
 
-    // 复盘
+    // 复盘 + 归档
     divider();
-    console.log('  📝 正在生成复盘...');
-    const fupanOut = await prompt([
-      `请用 /skill:review-summary 中的每题复盘格式生成复盘 JSON (用 \`\`\`json 包裹)。`,
-      `小节: ${s.lesson} ${s.title}`,
-    ].join('\n'));
-    const fupan = parseFupan(fupanOut);
+    const sectionTitle = `${s.lesson} ${s.title}`;
+    const fupan = await saveQuestion(resp, userAnswer, grading, {
+      section: sectionTitle, difficulty: "S-U", type: "choice",
+      suggestion: '继续下一小节。',
+    }, session.session_id);
+    if (fupan) fuPanList.push(fupan);
 
-    // 归档
-    const questionId = generateQuestionId();
-    if (fupan) {
-      const isCorrect = grading.includes('✅');
-      const archive = {
-        question_id: questionId,
-        knowledge_points: [],
-        difficulty: "S-U", type: "choice",
-        timestamp: timestampNow(),
-        question_text: resp,
-        user_answer: userAnswer,
-        correct_answer: grading,
-        explanation_l1: grading,
-        is_correct: isCorrect,
-        discussion_summary: {
-          core_misconception: fupan.error_root_cause || (isCorrect ? '无' : '（见复盘）'),
-          clarified_points: [], user_self_correction: null, lingering_questions: [],
-        },
-        knowledge_chain_l3: fupan.knowledge_chain || [],
-        suggestion_next: '继续下一小节。',
-        _fupan: fupan,
-      };
-      writeArchiveFiles(archive, questionId, session.session_id);
-      updateStateFromArchive(archive);
-      fuPanList.push(fupan);
-    }
-
-    // compact: 丢弃对话，保留 skill + reference + 复盘
     await compact();
+
+    // ─── 题后选项 ───
+    console.log(`\n  📋 选项:`);
+    console.log(`  1. 挑战更难的题 (${sectionTitle})`);
+    console.log(`  2. 继续当前知识点提问`);
+    console.log(`  3. 下一小节 (默认)`);
+    const postChoice = (await question('\n  请选择 (1/2/3, 默认3): ')).trim();
+    if (postChoice === '1') {
+      console.log('  🔥 生成更难的题...');
+      const harderResp = await prompt(`请对「${sectionTitle}」生成一道 M-U 级别的题，难度比上一道更高。`);
+      const harderAns = await smartAnswerInput(harderResp);
+      if (harderAns !== '跳过' && harderAns !== 'skip') {
+        divider();
+        const harderGrade = await prompt(`我的答案是「${harderAns}」。请用 /skill:review-grade 判题。`);
+        const hf = await saveQuestion(harderResp, harderAns, harderGrade, {
+          section: sectionTitle, difficulty: "M-U", type: "choice",
+        }, session.session_id);
+        if (hf) fuPanList.push(hf);
+        await compact();
+      }
+    } else if (postChoice === '2') {
+      console.log('  💬 请继续提问...');
+      const extraQ = (await question('\n  你的问题: ')).trim();
+      if (extraQ) await prompt(extraQ);
+    }
+    // 3 或空 = 默认继续下一小节
   }
 
   // 章节结束

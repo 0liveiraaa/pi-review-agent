@@ -1,31 +1,16 @@
 {
-  "current_session": {
-    "session_id": "s_2026-06-05T12-30-26-224Z",
-    "started": "2026-06-05T12:30:26.224Z",
-    "scope": "单元学习-第11章",
-    "mode": "quiz",
-    "total_questions": 0,
-    "correct": 0,
-    "incorrect": 0,
-    "current_question_index": 0,
-    "covered_knowledge_points": [],
-    "remaining_knowledge_points": [
-      "storage-space",
-      "new-delete",
-      "new-array",
-      "smart-pointer",
-      "shared-pointer"
-    ]
-  },
+  "current_session": null,
   "history": {
-    "total_questions_answered": 2,
-    "total_correct": 2,
-    "total_incorrect": 0,
+    "total_questions_answered": 16,
+    "total_correct": 15,
+    "total_incorrect": 1,
     "chapters_covered": [
       "指针",
       "10",
       "3",
-      "2"
+      "2",
+      "单元学习-第11章",
+      "单元学习-第17章"
     ],
     "sessions": [
       {
@@ -66,6 +51,22 @@
         "scope": "2",
         "total_questions": 1,
         "correct": 1,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T12-37-20-142Z",
+        "date": "20260605",
+        "scope": "单元学习-第11章",
+        "total_questions": 8,
+        "correct": 7,
+        "incorrect": 1
+      },
+      {
+        "session_id": "s_2026-06-05T13-01-01-877Z",
+        "date": "20260605",
+        "scope": "单元学习-第17章",
+        "total_questions": 6,
+        "correct": 6,
         "incorrect": 0
       }
     ]
