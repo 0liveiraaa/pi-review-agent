@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-期末复习助手 — Python CLI (M1 最小闭环)
+期末复习助手 — Python CLI
 
 职责:
   1. 命令解析 — 识别结构化指令 (下一题 / 跳过 / 总结等)
   2. 状态管理 — 进度 / 错题本 / 知识链索引
   3. Pi 调用 — 通过 pi -p 调度子任务 (系统提示: .pi/SYSTEM.md)
   4. 归档落盘 — JSON (上下文传递) + MD (完整记录)
+  5. 知识卡片 — 直接读取 reference/02-概念卡片/ 目录下的 MD 文件
 
 用法:
   python review_cli.py                          # 交互模式
-  python review_cli.py --chapter 9              # 直接指定章节
+  python review_cli.py --scope "第9章"           # 指定章节
   python review_cli.py --scope "指针,引用,const"  # 按知识点复习
 """
 
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import io
@@ -33,6 +33,7 @@ if sys.platform == "win32":
 PROJECT_ROOT = Path(__file__).parent.parent  # 面向对象程序设计/
 WORKSPACE = Path(__file__).parent            # workspace/
 REFERENCE = PROJECT_ROOT / "reference"
+CARD_DIR = REFERENCE / "02-概念卡片"
 DATA_DIR = WORKSPACE / "data"
 STATE_DIR = WORKSPACE / "state"
 ARCHIVE_DIR = WORKSPACE / "archive"
@@ -108,6 +109,7 @@ def call_pi(prompt: str, timeout: int = 120) -> str:
         result = subprocess.run(
             [
                 PI_EXE, "-p",           # 非交互 print 模式
+                "--model", "deepseek-flash",  # 快速模型
                 "-nbt",                  # 禁用内置工具 (bash/edit/write)
                 "--tools", "read",       # 只开放 read
                 "--no-session",          # 不保存 session
@@ -244,16 +246,53 @@ def get_recent_weaknesses(limit: int = 3) -> list:
 
 
 def _get_kp_ids_for_scope(scope: str) -> list:
-    """根据复习范围获取知识点 ID 列表"""
+    """根据复习范围获取知识点 ID 列表。支持: 章节号('第9章','第九章')、章节名('拷贝')、关键字('指针,引用')"""
+    # 中文数字 → 阿拉伯数字映射
+    CN_NUM = {
+        "一": "1", "二": "2", "三": "3", "四": "4", "五": "5",
+        "六": "6", "七": "7", "八": "8", "九": "9", "十": "10",
+        "十一": "11", "十二": "12", "十三": "13", "十四": "14", "十五": "15",
+        "十六": "16", "十七": "17", "十八": "18", "十九": "19", "二十": "20",
+    }
+
     index = load_json(KNOWLEDGE_INDEX_FILE)
     kp_ids = []
+    raw_keywords = [kw.strip() for kw in scope.replace("、", ",").replace("，", ",").split(",")]
+
+    # 预处理 keywords: "第九章" → "9", "第9章" → "9"
+    keywords = []
+    for kw in raw_keywords:
+        keywords.append(kw)  # 保留原始关键词
+        # "第9章" / "第 9 章" → "9"
+        m = re.match(r"第\s*(\d+)\s*章", kw)
+        if m:
+            keywords.append(m.group(1))
+            continue
+        # "第九章" / "第十一章" → 替换中文数字
+        for cn, num in CN_NUM.items():
+            if cn in kw:
+                keywords.append(kw.replace(cn, num))
+                break
+
     for chapter_id, chapter_data in index.get("chapters", {}).items():
         chapter_title = chapter_data.get("title", "")
-        # 简单匹配: scope 中包含章节号或章节名
-        if scope in chapter_id or scope in chapter_title:
-            for kp in chapter_data.get("knowledge_points", []):
-                kp_ids.append(kp["id"])
-    return kp_ids
+        for kp in chapter_data.get("knowledge_points", []):
+            kp_name = kp["name"]
+            kp_aliases = kp.get("aliases", [])
+            kp_tags = kp.get("tags", [])
+            search_text = (
+                f"{chapter_id} "
+                f"第{chapter_id}章 "
+                f"{chapter_title} "
+                f"{kp_name} "
+                f"{' '.join(kp_aliases)} "
+                f"{' '.join(kp_tags)}"
+            )
+            for kw in keywords:
+                if kw in search_text:
+                    kp_ids.append(kp["id"])
+                    break
+    return list(dict.fromkeys(kp_ids))  # 去重保序
 
 
 def select_knowledge_point(scope: str) -> dict:
@@ -292,7 +331,7 @@ def build_context(knowledge_point: dict, difficulty: str, question_type: str) ->
     ctx = f"""请使用 /skill:review-assistant 中的题型模板。
 
 【复习范围】{session.get('scope', '未指定')}
-【当前进度】第 {session.get('current_question_index', 0) + 1} 题 | 已答 {session.get('total_questions', 0)} 题 (正确 {session.get('correct', 0)}, 错误 {session.get('incorrect', 0)})
+【当前进度】第 {session.get('current_question_index', 0) + 1} 题 | 已答 {session.get('total_questions', 0)} 题 (✅{session.get('correct', 0)} ❌{session.get('incorrect', 0)}) | 剩余 {len(session.get('remaining_knowledge_points', []))} 个知识点
 【当前知识点】{knowledge_point['name']} (ID: {knowledge_point['id']}) | 难度: {difficulty}
 【关联知识点】{', '.join(knowledge_point.get('related', [])[:5])}
 【常见误区】{', '.join(knowledge_point.get('common_misconceptions', [])[:3])}
@@ -310,6 +349,10 @@ def build_context(knowledge_point: dict, difficulty: str, question_type: str) ->
     lingering = session.get("last_lingering_question")
     if lingering:
         ctx += f"\n【上一题遗留问题】{lingering}"
+
+    last_disc = session.get("last_discussion")
+    if last_disc:
+        ctx += f"\n【上一题讨论要点】{'; '.join(d for d in last_disc if d.startswith('[助手]'))[:300]}"
 
     ctx += f"""
 
@@ -398,6 +441,51 @@ def _type_name(question_type: str) -> str:
     return names.get(question_type, question_type)
 
 
+# ─── 难度递进 ───
+DIFFICULTY_LADDER = ["S-R", "S-U", "M-U", "M-A", "C-A"]
+
+
+def _select_difficulty(kp: dict, session: dict) -> str:
+    """根据当前表现选择难度。连续正确→升级，连续错误→降级。"""
+    baseline = kp.get("difficulty_baseline", "S-U")
+    if baseline not in DIFFICULTY_LADDER:
+        baseline = "S-U"  # fallback: 未知难度默认 S-U
+    baseline_idx = DIFFICULTY_LADDER.index(baseline)
+
+    # 从 session 中推断 streak
+    total = session.get("total_questions", 0)
+    correct = session.get("correct", 0)
+    incorrect = session.get("incorrect", 0)
+
+    if total == 0:
+        return baseline
+
+    accuracy = correct / total if total > 0 else 1.0
+
+    if total >= 3 and accuracy >= 0.8:
+        # 升级
+        idx = min(baseline_idx + 1, len(DIFFICULTY_LADDER) - 1)
+    elif incorrect >= 2 and accuracy < 0.5:
+        # 降级
+        idx = max(baseline_idx - 1, 0)
+    else:
+        idx = baseline_idx
+
+    return DIFFICULTY_LADDER[idx]
+
+
+def _select_question_type(kp: dict) -> str:
+    """根据知识点支持的题型轮换。默认顺序: choice → judgment → short_answer → choice。"""
+    supported = kp.get("question_types", ["choice"])
+    if len(supported) == 1:
+        return supported[0]
+    # 轮换策略: 基于总答题数在支持列表中轮换
+    progress = load_json(PROGRESS_FILE)
+    total = progress.get("history", {}).get("total_questions_answered", 0)
+    idx = total % len(supported)
+    return supported[idx]
+
+
 # ═══════════════════════════════════════════
 # 归档处理
 # ═══════════════════════════════════════════
@@ -445,6 +533,54 @@ is_correct: {is_correct}
 """
 
 
+def _fast_archive(
+    question_id: str, question_obj: dict, user_answer: str,
+    grading_result: str, is_correct: bool, kp: dict,
+) -> None:
+    """
+    本地快速归档 (不调 pi)。用于用户答对且无追问的场景。
+    从已有信息直接生成 JSON + MD，跳过 pi 调用。
+    """
+    # 从 grading result 尝试提取正确答案
+    correct_answer = ""
+    explanation = grading_result
+    # 尝试提取 "## 正确答案" 后的内容
+    m = re.search(r"##\s*正确答案\s*\n+(.+?)(?:\n##|\n\*\*|\Z)", grading_result, re.DOTALL)
+    if m:
+        correct_answer = m.group(1).strip()
+        # 解析部分从 "## 解析" 开始
+        exp_match = re.search(r"##\s*解析\s*\n+(.+)", grading_result, re.DOTALL)
+        if exp_match:
+            explanation = exp_match.group(1).strip()
+
+    # 从 KP 的 related 构建简单知识链
+    chain = kp.get("related", [])[:3] if kp.get("related") else []
+
+    archive = {
+        "question_id": question_id,
+        "knowledge_points": question_obj.get("knowledge_points", []),
+        "difficulty": question_obj.get("difficulty", ""),
+        "type": question_obj.get("type", ""),
+        "timestamp": timestamp_now(),
+        "question_text": question_obj.get("question_text", ""),
+        "user_answer": user_answer,
+        "correct_answer": correct_answer,
+        "explanation_l1": explanation,
+        "is_correct": is_correct,
+        "discussion_summary": {
+            "core_misconception": "无" if is_correct else "（快速归档，详见判题解析）",
+            "clarified_points": [],
+            "user_self_correction": None,
+            "lingering_questions": [],
+        },
+        "knowledge_chain_l3": chain,
+        "suggestion_next": "继续加油！保持正确率。" if is_correct else "建议回顾该知识点的概念卡片。",
+    }
+
+    _write_archive_files(archive, question_id)
+    _update_state_from_archive(archive)
+
+
 def parse_and_save_archive(pi_output: str, question_id: str):
     """解析 Pi 的 JSON 归档输出，保存 JSON，并根据模板生成 MD"""
     json_match = re.search(r"```json\s*\n(.*?)\n```", pi_output, re.DOTALL)
@@ -459,67 +595,82 @@ def parse_and_save_archive(pi_output: str, question_id: str):
         print(f"\n  ⚠️ JSON 解析失败: {e}")
         return
 
-    # ─── 保存 JSON 归档 ───
-    json_path = ARCHIVE_DIR / "sessions" / f"{question_id}.json"
-    save_json(json_path, archive_json)
+    _write_archive_files(archive_json, question_id)
+    _update_state_from_archive(archive_json)
 
-    # ─── 从 JSON 生成 MD 归档 ───
-    disc = archive_json.get("discussion_summary", {})
-    chain = archive_json.get("knowledge_chain_l3", [])
+
+def _write_archive_files(archive: dict, question_id: str) -> None:
+    """保存 JSON 和 MD 归档文件"""
+    # JSON
+    json_path = ARCHIVE_DIR / "sessions" / f"{question_id}.json"
+    save_json(json_path, archive)
+
+    # MD
+    disc = archive.get("discussion_summary", {})
+    chain = archive.get("knowledge_chain_l3", [])
 
     md_content = MD_TEMPLATE.format(
         question_id=question_id,
-        knowledge_points=", ".join(archive_json.get("knowledge_points", [])),
-        difficulty=archive_json.get("difficulty", ""),
-        type=archive_json.get("type", ""),
-        timestamp=archive_json.get("timestamp", timestamp_now()),
-        is_correct=archive_json.get("is_correct", False),
-        question_text=archive_json.get("question_text", ""),
-        user_answer=archive_json.get("user_answer", ""),
-        correct_answer=archive_json.get("correct_answer", ""),
-        explanation=archive_json.get("explanation_l1", ""),
+        knowledge_points=", ".join(archive.get("knowledge_points", [])),
+        difficulty=archive.get("difficulty", ""),
+        type=archive.get("type", ""),
+        timestamp=archive.get("timestamp", timestamp_now()),
+        is_correct=archive.get("is_correct", False),
+        question_text=archive.get("question_text", ""),
+        user_answer=archive.get("user_answer", ""),
+        correct_answer=archive.get("correct_answer", ""),
+        explanation=archive.get("explanation_l1", ""),
         core_misconception=disc.get("core_misconception", "无"),
         clarified_points="\n".join(f"- {p}" for p in disc.get("clarified_points", [])) or "- 无",
         user_self_correction=disc.get("user_self_correction") or "无",
         lingering_questions="\n".join(f"- {q}" for q in disc.get("lingering_questions", [])) or "- 无",
         knowledge_chain=" → ".join(chain) if chain else "（无）",
-        suggestion_next=archive_json.get("suggestion_next", "继续加油！"),
+        suggestion_next=archive.get("suggestion_next", "继续加油！"),
     )
 
     md_path = ARCHIVE_DIR / "sessions" / f"{question_id}.md"
     md_path.write_text(md_content, encoding="utf-8")
 
-    # ─── 更新错题本 ───
-    if not archive_json.get("is_correct", True):
-        error_type = _classify_error(archive_json)
+    print(f"\n  ✅ JSON 归档: {json_path}")
+    print(f"  ✅ MD 归档:  {md_path}")
+
+
+def _update_state_from_archive(archive: dict) -> None:
+    """从归档数据更新错题本、知识链和进度"""
+    disc = archive.get("discussion_summary", {})
+    chain = archive.get("knowledge_chain_l3", [])
+
+    # 错题本
+    if not archive.get("is_correct", True):
+        error_type = _classify_error(archive)
         save_wrong_entry(
-            question_id=question_id,
-            knowledge_points=archive_json.get("knowledge_points", []),
+            question_id=archive.get("question_id", ""),
+            knowledge_points=archive.get("knowledge_points", []),
             error_type=error_type,
             error_detail=disc.get("core_misconception", ""),
         )
 
-    # ─── 更新知识链 ───
+    # 知识链
     if chain:
         update_knowledge_chains(chain)
 
-    # ─── 更新进度 ───
+    # 进度
     progress = load_json(PROGRESS_FILE)
     session = progress.get("current_session", {})
     if session:
         covered = set(session.get("covered_knowledge_points", []))
-        for kp in archive_json.get("knowledge_points", []):
+        for kp in archive.get("knowledge_points", []):
             covered.add(kp)
         session["covered_knowledge_points"] = list(covered)
 
         remaining = session.get("remaining_knowledge_points", [])
-        for kp in archive_json.get("knowledge_points", []):
+        for kp in archive.get("knowledge_points", []):
             if kp in remaining:
                 remaining.remove(kp)
         session["remaining_knowledge_points"] = remaining
 
         session["total_questions"] = session.get("total_questions", 0) + 1
-        if archive_json.get("is_correct", True):
+        if archive.get("is_correct", True):
             session["correct"] = session.get("correct", 0) + 1
         else:
             session["incorrect"] = session.get("incorrect", 0) + 1
@@ -529,9 +680,6 @@ def parse_and_save_archive(pi_output: str, question_id: str):
 
         progress["current_session"] = session
         save_json(PROGRESS_FILE, progress)
-
-    print(f"\n  ✅ JSON 归档: {json_path}")
-    print(f"  ✅ MD 归档:  {md_path}")
 
 
 def _classify_error(archive: dict) -> str:
@@ -554,13 +702,44 @@ def _classify_error(archive: dict) -> str:
 
 
 # ═══════════════════════════════════════════
+# 知识卡片读取
+# ═══════════════════════════════════════════
+
+def _load_concept_card(kp_name: str) -> str | None:
+    """从 reference/02-概念卡片/ 目录读取知识卡片 MD 文件。返回 None 表示未找到。"""
+    # 1. 精确匹配
+    exact_path = CARD_DIR / f"{kp_name}.md"
+    if exact_path.exists():
+        content = exact_path.read_text(encoding="utf-8")
+        return _strip_frontmatter(content)
+
+    # 2. 模糊匹配: 遍历目录，查找包含知识点名称的文件
+    if CARD_DIR.exists():
+        for f in CARD_DIR.iterdir():
+            if f.suffix == ".md" and kp_name in f.stem:
+                content = f.read_text(encoding="utf-8")
+                return _strip_frontmatter(content)
+
+    return None
+
+
+def _strip_frontmatter(content: str) -> str:
+    """去除 YAML frontmatter (--- ... ---)，保留正文。"""
+    # 匹配开头的 YAML frontmatter
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return content.strip()
+
+
+# ═══════════════════════════════════════════
 # 交互式主循环
 # ═══════════════════════════════════════════
 
 def main():
     print("=" * 60)
     print("  📚 期末复习助手 — 面向对象程序设计 (C++)")
-    print("  M1 最小闭环")
     print("=" * 60)
     print()
     print("指令: 下一题(n) | 跳过(skip) | 提示(hint) | 总结(sum) | 退出(q)")
@@ -569,21 +748,67 @@ def main():
     # ─── 系统提示由 .pi/SYSTEM.md 自动加载，Skill 由 .pi/skills/ 自动发现 ───
 
     # 获取复习范围
-    scope = input("🎯 请输入复习范围 (如 '第9章'): ").strip()
+    print("\n🎯 复习范围 (支持: 「第9章」「第九章」「9」/ 关键字「指针,引用」/「错题」)")
+    scope = input("   请输入: ").strip()
     if not scope:
         scope = "第9章"
 
-    # 初始化会话
-    session = init_session(scope)
-    print(f"\n✅ 会话已创建: {session['session_id']}")
-    print(f"   范围: {scope}")
-    print(f"   知识点: {len(session['remaining_knowledge_points'])} 个")
+    # 错题复习模式
+    review_wrong = scope in ("错题", "错题本", "wrong")
+    if review_wrong:
+        wrong_book = load_json(WRONG_BOOK_FILE)
+        entries = wrong_book.get("entries", [])
+        if not entries:
+            print("\n🎉 错题本为空! 请先正常做题产生错题。")
+            scope = input("\n🎯 请输入复习范围: ").strip() or "第9章"
+            review_wrong = False
+        else:
+            print(f"\n📋 错题本共 {len(entries)} 道错题")
+            stats = wrong_book.get("error_type_stats", {})
+            print(f"   概念混淆: {stats.get('概念混淆', 0)} | 知识遗漏: {stats.get('知识遗漏', 0)} | 推理错误: {stats.get('推理错误', 0)}")
+            # 从错题中提取知识点
+            wrong_kp_ids = list(set(kp for entry in entries for kp in entry.get("knowledge_points", [])))
+            scope = "错题复习"
+            session = init_session(scope)
+            session["remaining_knowledge_points"] = wrong_kp_ids
+            # 注入错题统计作为额外上下文
+            session["_wrong_book_mode"] = True
+            session["_wrong_stats"] = stats
+            progress = load_json(PROGRESS_FILE)
+            progress["current_session"] = session
+            save_json(PROGRESS_FILE, progress)
+            print(f"   涉及知识点: {len(wrong_kp_ids)} 个")
+            review_wrong = True
+
+    if not review_wrong:
+        # 初始化会话
+        session = init_session(scope)
+        print(f"\n✅ 会话已创建: {session['session_id']}")
+        print(f"   范围: {scope}")
+        kp_count = len(session.get('remaining_knowledge_points', []))
+        while kp_count == 0:
+            print(f"\n   ⚠️ 未匹配到知识点!")
+            print(f"   提示: 可用章节 1-20，或输入关键字如「指针」「继承」「多态」")
+            print(f"   格式: 「第9章」「第九章」「9」「指针,引用」")
+            scope = input("\n🎯 请输入复习范围 (q 退出): ").strip()
+            if scope in ("q", "退出", ""):
+                print("   已取消。")
+                return
+            session = init_session(scope)
+            kp_count = len(session.get('remaining_knowledge_points', []))
+        print(f"   知识点: {kp_count} 个")
 
     # 选择模式
     print("\n📋 模式选择:")
     print("   1. 先看知识卡片，再做题")
     print("   2. 直接做题")
-    mode_choice = input("请选择 (1/2, 默认2): ").strip()
+    while True:
+        mode_choice = input("请选择 (1/2, 默认2): ").strip()
+        if mode_choice == "":
+            mode_choice = "2"
+        if mode_choice in ("1", "2"):
+            break
+        print("   ⚠️ 请输入 1 或 2")
     show_card = mode_choice == "1"
 
     # ─── 主循环 ───
@@ -612,24 +837,24 @@ def main():
             session = init_session(scope)
             continue
 
-        # 选择难度 (简单策略: 如果用户连续正确 2 题以上，提升难度)
-        correct_streak = _get_correct_streak()
-        if correct_streak >= 2:
-            difficulty = "M-U"
-        else:
-            difficulty = kp.get("difficulty_baseline", "S-U")
-
-        # 选择题型 (根据知识点支持的题型)
-        supported_types = kp.get("question_types", ["choice"])
-        question_type = "choice"  # M1 默认选择题
+        # 选择难度和题型
+        difficulty = _select_difficulty(kp, session)
+        question_type = _select_question_type(kp)
 
         # ─── 知识卡片 (可选) ───
         if show_card:
-            card_prompt = f"""展示以下知识点的复习卡片。
+            print(f"\n{'─' * 50}")
+            card_content = _load_concept_card(kp["name"])
+            if card_content:
+                # 代码直读 reference MD，不调 pi
+                print(f"\n## 知识点卡片: {kp['name']}\n")
+                print(card_content)
+            else:
+                # 未找到现成卡片，调 pi 生成
+                card_prompt = f"""请使用 /skill:review-assistant 展示复习卡片。
 
 知识点: {kp['name']}
 章节: 第{kp['chapter']}章
-标签: {', '.join(kp.get('tags', []))}
 【参考路径】{str(REFERENCE)}
 
 格式:
@@ -644,16 +869,13 @@ def main():
 - 要点3
 
 ### 易错提醒
-（常见误区）
-
-卡片展示后提示用户: 输入「做题」开始做题，或输入「跳过」直接下一题。"""
-
+（常见误区）"""
+                response = call_pi(card_prompt)
+                print(response)
             print(f"\n{'─' * 50}")
-            response = call_pi(card_prompt)
-            print(response)
-            print(f"{'─' * 50}")
 
-            cmd = input("\n> ").strip()
+            print("\n💡 输入任意内容开始做题 | 输入「跳过」进入下一个知识点")
+            cmd = input("> ").strip()
             if cmd == "跳过" or cmd == "skip":
                 continue
             elif cmd == "总结" or cmd == "sum":
@@ -675,7 +897,12 @@ def main():
         print(f"{'─' * 50}")
 
         # Step 2: 用户作答
-        user_answer = input("\n✏️  你的答案: ").strip()
+        while True:
+            user_answer = input("\n✏️  你的答案: ").strip()
+            if user_answer == "":
+                print("   ⚠️ 请输入答案 (或 skip 跳过 / q 退出)")
+                continue
+            break
 
         if user_answer == "跳过" or user_answer == "skip":
             continue
@@ -705,25 +932,41 @@ def main():
 
             if cmd == "下一题" or cmd == "n":
                 # 归档 → 下一题
-                print("\n  📝 正在生成归档...")
-                archive_ctx = build_archive_context(
-                    question_obj, user_answer, grading_result,
-                    discussion_history, session.get("current_question_index", 0),
-                )
-                archive_output = call_pi(archive_ctx, timeout=180)
-                parse_and_save_archive(archive_output, question_id)
+                is_correct = "✅ 正确" in grading_result or "✅" in grading_result
+                if is_correct and not discussion_history:
+                    # 快速归档: 答对且无追问，不调 pi
+                    print("\n  ⚡ 快速归档...")
+                    _fast_archive(question_id, question_obj, user_answer, grading_result, True, kp)
+                else:
+                    print("\n  📝 正在生成归档...")
+                    archive_ctx = build_archive_context(
+                        question_obj, user_answer, grading_result,
+                        discussion_history, session.get("current_question_index", 0),
+                    )
+                    archive_output = call_pi(archive_ctx, timeout=180)
+                    parse_and_save_archive(archive_output, question_id)
+                # 持久化讨论历史
+                if discussion_history:
+                    update_session(last_discussion=discussion_history[-4:])  # 保留最后4条
                 print(f"\n{'─' * 50}")
                 break  # 跳出讨论循环，进入下一题
 
             elif cmd == "总结" or cmd == "sum":
                 # 先归档当前题，再结束会话
-                print("\n  📝 正在生成归档...")
-                archive_ctx = build_archive_context(
-                    question_obj, user_answer, grading_result,
-                    discussion_history, session.get("current_question_index", 0),
-                )
-                archive_output = call_pi(archive_ctx, timeout=180)
-                parse_and_save_archive(archive_output, question_id)
+                is_correct = "✅ 正确" in grading_result or "✅" in grading_result
+                if is_correct and not discussion_history:
+                    print("\n  ⚡ 快速归档...")
+                    _fast_archive(question_id, question_obj, user_answer, grading_result, True, kp)
+                else:
+                    print("\n  📝 正在生成归档...")
+                    archive_ctx = build_archive_context(
+                        question_obj, user_answer, grading_result,
+                        discussion_history, session.get("current_question_index", 0),
+                    )
+                    archive_output = call_pi(archive_ctx, timeout=180)
+                    parse_and_save_archive(archive_output, question_id)
+                if discussion_history:
+                    update_session(last_discussion=discussion_history[-4:])
                 break  # 跳出讨论循环
 
             elif cmd == "退出" or cmd == "q":
@@ -757,22 +1000,6 @@ def main():
 
     # ─── 会话总结 ───
     _generate_session_summary()
-
-
-def _get_correct_streak() -> int:
-    """计算连续正确数"""
-    progress = load_json(PROGRESS_FILE)
-    sessions = progress.get("history", {}).get("sessions", [])
-    wrong_book = load_json(WRONG_BOOK_FILE)
-    entries = wrong_book.get("entries", [])
-    if not entries:
-        return 10  # 没有错题，连续正确很多
-    last_wrong_id = entries[-1]["question_id"]
-    # 简单估算: 从总答题数减去最后一次错题位置
-    total = progress.get("history", {}).get("total_questions_answered", 0)
-    wrong_count = len(entries)
-    streak = max(0, total - wrong_count)
-    return min(streak, 10)
 
 
 def _generate_session_summary():

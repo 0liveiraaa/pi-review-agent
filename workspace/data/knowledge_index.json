@@ -1,245 +1,834 @@
 {
   "course": "面向对象程序设计",
   "chapters": {
+    "1": {
+      "title": "概述",
+      "knowledge_points": [
+        {
+          "id": "programming-paradigms",
+          "name": "编程范型",
+          "chapter": 1, "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-R",
+          "related": ["oop-basics", "cpp-intro"],
+          "common_misconceptions": ["认为C++只能面向对象", "混淆过程式和面向对象的本质区别"],
+          "generation_hints": "考察一种语言可以支持多种范型，C++同时支持过程式、结构化、面向对象、泛型。"
+        },
+        {
+          "id": "oop-basics",
+          "name": "面向对象程序设计基础",
+          "chapter": 1, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["programming-paradigms", "class-object"],
+          "common_misconceptions": ["面向对象=用类写代码", "不知道面向对象解决什么核心问题"],
+          "generation_hints": "考察OOP的核心思想和本课程学什么。可出简述题: 面向对象程序设计相比过程式有什么优势?"
+        }
+      ]
+    },
+    "2": {
+      "title": "C++工程项目",
+      "knowledge_points": [
+        {
+          "id": "header-file",
+          "name": "头文件",
+          "chapter": 2, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["include-guard", "implementation-file", "declaration-vs-definition"],
+          "common_misconceptions": ["头文件里只能放声明不能放定义", "include是编译阶段的事"],
+          "generation_hints": "考察头文件放声明、实现文件放定义。include是预处理文本包含。包含警戒避免重复包含。"
+        },
+        {
+          "id": "include-guard",
+          "name": "包含警戒",
+          "chapter": 2, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-R",
+          "related": ["header-file", "preprocessor"],
+          "common_misconceptions": ["包含警戒和避免重复定义是同一回事"],
+          "generation_hints": "考察#ifndef/#define/#endif或#pragma once。重点: 为什么需要包含警戒。"
+        },
+        {
+          "id": "compilation-process",
+          "name": "编译过程",
+          "chapter": 2, "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["header-file", "linker", "implementation-file"],
+          "common_misconceptions": ["编译和链接是同一个阶段", "预编译、编译、汇编、链接的边界模糊"],
+          "generation_hints": "考察编译的四个阶段。头文件在预编译阶段展开，多目标文件在链接阶段合并。"
+        }
+      ]
+    },
+    "3": {
+      "title": "类型、变量与表达式",
+      "knowledge_points": [
+        {
+          "id": "declaration-vs-definition",
+          "name": "声明和定义",
+          "chapter": 3, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["odr", "scope-lifetime", "header-file"],
+          "common_misconceptions": ["声明和定义是一回事", "不知道变量、函数、类分别如何判断声明/定义"],
+          "generation_hints": "核心考点: 声明说明名字，定义给出实体。变量extern是声明，函数原型是声明，类定义是定义。"
+        },
+        {
+          "id": "odr",
+          "name": "单一定义规则",
+          "chapter": 3, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["declaration-vs-definition", "header-file"],
+          "common_misconceptions": ["ODR只限制变量不限制函数", "不知道哪些实体允许多次定义"],
+          "generation_hints": "ODR要求同一实体在程序中不能有冲突定义。类定义、内联函数、模板可在多个编译单元出现。"
+        },
+        {
+          "id": "scope-lifetime",
+          "name": "作用域与生命周期",
+          "chapter": 3, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["storage-class", "static-local"],
+          "common_misconceptions": ["作用域和生命周期是同一个概念", "不知道静态局部变量的生命周期"],
+          "generation_hints": "作用域决定名字在哪里可见，生命周期决定对象活多久。静态局部变量局部可见但生命周期到程序结束。"
+        }
+      ]
+    },
+    "4": {
+      "title": "指针、数组、引用与const",
+      "knowledge_points": [
+        {
+          "id": "pointer",
+          "name": "指针",
+          "chapter": 4, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["array", "reference", "const-pointer", "heap", "dynamic-memory"],
+          "common_misconceptions": ["指针和数组是同一个东西", "不知道指针保存地址、数组是连续对象"],
+          "generation_hints": "指针保存地址，可以改变指向，可以为空。数组指针和指针数组写法相近但语义完全不同。"
+        },
+        {
+          "id": "reference",
+          "name": "引用",
+          "chapter": 4, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["pointer", "const-reference", "function-params"],
+          "common_misconceptions": ["引用就是指针的语法糖", "引用初始化后还能改绑"],
+          "generation_hints": "引用是别名，初始化后不能改绑。常引用常用于函数参数避免复制。"
+        },
+        {
+          "id": "const-pointer",
+          "name": "const与指针",
+          "chapter": 4, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["pointer", "const-reference"],
+          "common_misconceptions": ["分不清const int* p和int* const p", "const int* const p不知道两个const分别限制什么"],
+          "generation_hints": "经典考点: const int* p(不能通过p改值), int* const p(p本身不能改指向), const int* const p(都不能改)。"
+        },
+        {
+          "id": "const-reference",
+          "name": "const与引用",
+          "chapter": 4, "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["reference", "function-params", "copy-constructor"],
+          "common_misconceptions": ["const引用只能绑定const对象"],
+          "generation_hints": "const引用可延长临时对象生命周期。常用于函数参数。拷贝构造参数就是const T&。"
+        }
+      ]
+    },
+    "5": {
+      "title": "函数",
+      "knowledge_points": [
+        {
+          "id": "function-overload",
+          "name": "函数重载",
+          "chapter": 5, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["default-params", "inheritance-hide"],
+          "common_misconceptions": ["重载可以只靠返回类型区分", "不知道默认参数和重载组合出的二义性"],
+          "generation_hints": "重载依赖参数列表(个数/类型/顺序)区分。不能只靠返回类型。默认参数可能导致二义性。"
+        },
+        {
+          "id": "function-return",
+          "name": "函数返回",
+          "chapter": 5, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["reference", "dangling-reference", "copy-constructor"],
+          "common_misconceptions": ["返回局部变量的引用没问题", "不知道按值返回会触发拷贝构造"],
+          "generation_hints": "返回指针或引用必须保证被返回对象仍然活着。返回局部变量引用=悬空引用。按值返回触发拷贝构造。"
+        },
+        {
+          "id": "default-params",
+          "name": "默认参数",
+          "chapter": 5, "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-R",
+          "related": ["function-overload"],
+          "common_misconceptions": ["默认参数可以随意放位置", "默认参数和重载不会冲突"],
+          "generation_hints": "默认参数从右向左排列。默认参数与重载组合可能产生二义性。"
+        }
+      ]
+    },
+    "6": {
+      "title": "类和对象基础",
+      "knowledge_points": [
+        {
+          "id": "class-object",
+          "name": "类和对象",
+          "chapter": 6, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["constructor", "this-pointer", "encapsulation"],
+          "common_misconceptions": ["类和对象是同一个概念", "不知道类是类型、对象是实例"],
+          "generation_hints": "类是类型，对象是实例。类定义描述对象的结构和行为。"
+        },
+        {
+          "id": "object-size",
+          "name": "对象存储大小",
+          "chapter": 6, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["class-object", "static-member", "vtable"],
+          "common_misconceptions": ["对象大小=所有成员之和", "静态数据成员计入对象大小", "空类大小为0"],
+          "generation_hints": "对象大小由非静态数据成员、对齐、虚函数表指针决定。静态数据成员不计入。空类至少1字节。"
+        }
+      ]
+    },
+    "7": {
+      "title": "成员函数、访问控制与封装",
+      "knowledge_points": [
+        {
+          "id": "this-pointer",
+          "name": "this指针",
+          "chapter": 7, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["const-member-func", "static-member-func", "member-func-impl"],
+          "common_misconceptions": ["this是指向类的指针", "静态成员函数也有this"],
+          "generation_hints": "普通成员函数有隐含this。obj.f()把obj作为当前对象传入。静态成员函数没有this。常成员函数的this类似const T* const。"
+        },
+        {
+          "id": "const-member-func",
+          "name": "常成员函数",
+          "chapter": 7, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["this-pointer", "const-object"],
+          "common_misconceptions": ["常成员函数不能改类的任何数据", "常对象可以调用普通成员函数"],
+          "generation_hints": "常成员函数参数列表后写const。修饰的是隐含this。常对象只能调用常成员函数。只要不修改对象状态就应该声明为const。"
+        },
+        {
+          "id": "encapsulation",
+          "name": "封装与信息隐蔽",
+          "chapter": 7, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["access-control", "class-design"],
+          "common_misconceptions": ["封装和信息隐蔽是同一个概念", "private就是封装"],
+          "generation_hints": "封装是把数据和行为组织在类中。信息隐蔽是隐藏内部实现。public接口vs private实现。好的设计让外部针对接口编程。"
+        },
+        {
+          "id": "static-member",
+          "name": "实例成员与类成员",
+          "chapter": 7, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["this-pointer", "class-object", "object-size"],
+          "common_misconceptions": ["静态成员每个对象有一份", "静态成员函数可以访问普通成员", "实例常量可以在构造函数体内初始化"],
+          "generation_hints": "实例变量每个对象各有一份。类变量(static)归整个类共享。静态成员函数没有this，不能直接访问实例成员。"
+        }
+      ]
+    },
+    "8": {
+      "title": "构造函数与析构函数",
+      "knowledge_points": [
+        {
+          "id": "constructor",
+          "name": "构造函数",
+          "chapter": 8, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["destructor", "init-list", "default-constructor", "explicit"],
+          "common_misconceptions": ["构造函数体内赋值=初始化", "构造函数有返回值", "explicit只能用于单参数构造函数"],
+          "generation_hints": "构造函数同名无返回值。初始化列表才是真初始化，函数体内=是赋值。explicit禁止隐式转换。"
+        },
+        {
+          "id": "init-list",
+          "name": "构造函数初始化列表",
+          "chapter": 8, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["constructor", "instance-const", "inheritance-ctor"],
+          "common_misconceptions": ["初始化列表和函数体赋值没区别", "不知道实例常量必须在初始化列表中初始化"],
+          "generation_hints": "进入构造函数体时对象已创建。实例常量、引用成员、基类子对象必须用初始化列表。"
+        },
+        {
+          "id": "default-constructor",
+          "name": "缺省构造函数",
+          "chapter": 8, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["constructor", "default-copy-constructor"],
+          "common_misconceptions": ["编译器总是提供缺省构造函数", "用户写了有参构造后编译器仍提供无参构造"],
+          "generation_hints": "高频考点:用户声明了任何构造函数后，编译器不再提供缺省构造函数。需要无参构造时必须自己写。"
+        },
+        {
+          "id": "destructor",
+          "name": "析构函数",
+          "chapter": 8, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["constructor", "virtual-destructor", "heap", "delete"],
+          "common_misconceptions": ["析构函数可以是const", "析构函数可以重载", "delete p只释放内存不调用析构"],
+          "generation_hints": "析构函数~类名()，无参无返回值不能重载。栈区对象离开作用域自动析构。成员按声明逆序析构。"
+        }
+      ]
+    },
     "9": {
       "title": "对象拷贝与赋值",
       "knowledge_points": [
         {
           "id": "copy-constructor",
-          "name": "拷贝构造函数",
-          "chapter": 9,
-          "aliases": ["copy constructor", "复制构造函数"],
-          "tags": ["对象拷贝", "构造函数", "const引用"],
-          "exam_level": "high",
+          "name": "拷贝构造函数", "chapter": 9, "exam_level": "high",
           "question_types": ["judgment", "choice", "short_answer"],
           "difficulty_baseline": "S-U",
-          "prerequisites": ["class-object", "constructor"],
-          "related": ["deep-copy", "shallow-copy", "assignment-operator", "destructor"],
-          "wiki_links": ["拷贝构造函数", "对象的拷贝", "深拷贝", "浅拷贝", "缺省拷贝构造函数"],
-          "common_misconceptions": [
-            "分不清拷贝构造和赋值的触发时机",
-            "认为 A a2 = a1; 是赋值而不是拷贝构造",
-            "不知道按值传参会触发拷贝构造"
-          ],
-          "exam_patterns": [
-            "给一段代码，判断哪行触发拷贝构造",
-            "考察拷贝构造函数参数为什么是 const T&",
-            "简述拷贝构造和赋值的区别"
-          ],
-          "generation_hints": "重点考察触发时机判断: 新对象创建 = 拷贝构造，已有对象 = 赋值。代码示例中混用 = 初始化语法来制造陷阱。"
+          "related": ["shallow-copy", "deep-copy", "object-assignment", "destructor"],
+          "common_misconceptions": ["分不清拷贝构造和赋值的触发时机", "A a2=a1是赋值不是拷贝构造", "不知道按值传参会触发拷贝构造"],
+          "generation_hints": "核心考点:触发时机。新对象创建=拷贝构造，已有对象=赋值。=初始化也是拷贝构造。参数const T&。"
         },
         {
           "id": "shallow-copy",
-          "name": "浅拷贝",
-          "chapter": 9,
-          "aliases": ["shallow copy", "浅复制", "按位拷贝"],
-          "tags": ["对象拷贝", "指针", "堆区", "重复释放"],
-          "exam_level": "high",
+          "name": "浅拷贝", "chapter": 9, "exam_level": "high",
           "question_types": ["judgment", "choice", "short_answer"],
           "difficulty_baseline": "S-U",
-          "prerequisites": ["pointer", "heap", "copy-constructor"],
-          "related": ["deep-copy", "default-copy-constructor", "double-free", "destructor"],
-          "wiki_links": ["浅拷贝", "缺省拷贝构造函数", "深拷贝", "重复释放", "指针", "堆区"],
-          "common_misconceptions": [
-            "认为浅拷贝就是逐字节内存复制",
-            "不知道对象类型成员会调用其拷贝构造函数",
-            "不知道静态数据成员不参与拷贝",
-            "认为浅拷贝总是错误的"
-          ],
-          "exam_patterns": [
-            "选择题: 给一个含指针成员的类，问浅拷贝后会出现什么问题",
-            "正误判断: 浅拷贝拷贝静态数据成员 (错误)",
-            "简述题: 为什么有指针成员的类不能依赖浅拷贝"
-          ],
-          "generation_hints": "重点考察浅拷贝的后果: 指针共享 + 重复释放。可以出代码分析题，让用户指出问题所在。"
+          "related": ["deep-copy", "default-copy-constructor", "double-free"],
+          "common_misconceptions": ["浅拷贝=逐字节复制", "对象类型成员不调其拷贝构造", "静态数据成员参与拷贝"],
+          "generation_hints": "浅拷贝复制对象自身存储区成员值。指针成员复制地址值→两个指针指向同一资源→析构时重复释放。"
         },
         {
           "id": "deep-copy",
-          "name": "深拷贝",
-          "chapter": 9,
-          "aliases": ["deep copy", "深复制"],
-          "tags": ["对象拷贝", "指针", "资源管理", "RAII"],
-          "exam_level": "high",
+          "name": "深拷贝", "chapter": 9, "exam_level": "high",
           "question_types": ["judgment", "choice", "short_answer"],
           "difficulty_baseline": "S-U",
-          "prerequisites": ["shallow-copy", "copy-constructor", "heap", "new-operator"],
-          "related": ["shallow-copy", "custom-copy-constructor", "custom-assignment-operator", "RAII"],
-          "wiki_links": ["深拷贝", "浅拷贝", "拷贝构造函数", "自定义拷贝构造函数", "RAII"],
-          "common_misconceptions": [
-            "不知道深拷贝需要手动 new 新资源",
-            "认为深拷贝自动处理所有情况"
-          ],
-          "exam_patterns": [
-            "选择题: 哪个代码实现了深拷贝",
-            "简述题: 深拷贝和浅拷贝的区别及各自适用场景"
-          ],
-          "generation_hints": "深拷贝通常和浅拷贝对比出题，也常结合运算符重载出题。考察点在于'重新申请资源并复制内容'这步。"
-        },
-        {
-          "id": "default-copy-constructor",
-          "name": "缺省拷贝构造函数",
-          "chapter": 9,
-          "aliases": ["默认拷贝构造函数", "编译器生成的拷贝构造函数"],
-          "tags": ["对象拷贝", "编译器行为"],
-          "exam_level": "medium",
-          "question_types": ["judgment", "choice"],
-          "difficulty_baseline": "S-R",
-          "prerequisites": ["copy-constructor", "shallow-copy"],
-          "related": ["shallow-copy", "custom-copy-constructor", "default-constructor"],
-          "wiki_links": ["缺省拷贝构造函数", "浅拷贝", "自定义拷贝构造函数"],
-          "common_misconceptions": [
-            "不知道编译器什么时候提供、什么时候不提供缺省拷贝构造函数"
-          ],
-          "exam_patterns": [
-            "正误判断: 编译器总会生成拷贝构造函数 (错误，有自定义构造函数时仍可能生成)",
-            "选择题: 什么时候必须自定义拷贝构造函数"
-          ]
-        },
-        {
-          "id": "custom-copy-constructor",
-          "name": "自定义拷贝构造函数",
-          "chapter": 9,
-          "aliases": ["自定义的拷贝构造函数"],
-          "tags": ["对象拷贝", "深拷贝", "资源管理"],
-          "exam_level": "high",
-          "question_types": ["judgment", "choice", "short_answer"],
-          "difficulty_baseline": "M-U",
-          "prerequisites": ["copy-constructor", "deep-copy", "new-operator"],
-          "related": ["deep-copy", "custom-assignment-operator", "self-assignment"],
-          "wiki_links": ["自定义拷贝构造函数", "深拷贝", "拷贝构造函数", "9.4 使用自定义拷贝构造函数"],
-          "common_misconceptions": [
-            "忘记参数必须是 const T&",
-            "按值传参导致无限递归"
-          ],
-          "exam_patterns": [
-            "给代码填空: 补全自定义拷贝构造函数",
-            "选择题: 以下自定义拷贝构造函数哪处有误",
-            "简述题: 自定义拷贝构造函数的要点"
-          ]
+          "related": ["shallow-copy", "custom-copy-constructor", "RAII"],
+          "common_misconceptions": ["不知道深拷贝需要手动new新资源"],
+          "generation_hints": "深拷贝复制指针指向的资源内容。pa_=new A(*rhs.pa_)。管理堆资源的类通常需要深拷贝。"
         },
         {
           "id": "object-assignment",
-          "name": "对象赋值",
-          "chapter": 9,
-          "aliases": ["赋值", "assignment"],
-          "tags": ["对象赋值", "赋值函数", "浅赋值"],
-          "exam_level": "high",
+          "name": "对象赋值", "chapter": 9, "exam_level": "high",
           "question_types": ["judgment", "choice", "short_answer"],
           "difficulty_baseline": "M-U",
-          "prerequisites": ["class-object", "copy-constructor"],
-          "related": ["copy-constructor", "shallow-assignment", "custom-assignment-operator", "self-assignment"],
-          "wiki_links": ["对象赋值", "赋值函数", "浅赋值", "拷贝构造函数"],
-          "common_misconceptions": [
-            "混淆赋值和拷贝构造的触发时机",
-            "不知道 A a2 = a1; 是拷贝构造而不是赋值",
-            "不知道引用成员会影响赋值函数"
-          ],
-          "exam_patterns": [
-            "给一段代码，判断哪行是赋值、哪行是拷贝构造",
-            "正误判断: A a2 = a1; 调用了赋值函数 (错误)",
-            "简述题: 拷贝构造和赋值有什么区别"
-          ],
-          "generation_hints": "核心考点就是区分触发时机。多用 = 初始化来制造陷阱。也常和拷贝构造对比出题。"
-        },
-        {
-          "id": "shallow-assignment",
-          "name": "浅赋值",
-          "chapter": 9,
-          "aliases": ["shallow assignment"],
-          "tags": ["对象赋值", "指针", "内存泄漏", "重复释放"],
-          "exam_level": "medium",
-          "question_types": ["judgment", "choice"],
-          "difficulty_baseline": "S-U",
-          "prerequisites": ["object-assignment", "shallow-copy"],
-          "related": ["shallow-copy", "custom-assignment-operator", "memory-leak", "double-free"],
-          "wiki_links": ["浅赋值", "浅拷贝", "内存泄漏", "重复释放"],
-          "common_misconceptions": [
-            "只关注浅拷贝的问题，忽略了浅赋值同样有问题",
-            "不知道浅赋值会导致内存泄漏 (原资源丢失)"
-          ],
-          "exam_patterns": [
-            "选择题: 浅赋值后会出现什么后果",
-            "正误判断: 浅赋值不会导致内存泄漏 (错误)"
-          ],
-          "generation_hints": "注意和浅拷贝的对称性。浅赋值多一个内存泄漏问题 (原资源指针被覆盖)。"
-        },
-        {
-          "id": "custom-assignment-operator",
-          "name": "自定义赋值函数",
-          "chapter": 9,
-          "aliases": ["自定义的赋值函数", "operator="],
-          "tags": ["对象赋值", "深赋值", "自我赋值", "链式赋值"],
-          "exam_level": "high",
-          "question_types": ["judgment", "choice", "short_answer"],
-          "difficulty_baseline": "M-A",
-          "prerequisites": ["object-assignment", "deep-copy", "self-assignment"],
-          "related": ["self-assignment", "chain-assignment", "deep-copy", "custom-copy-constructor"],
-          "wiki_links": ["自定义赋值函数", "自我赋值", "链式赋值", "9.6 自定义赋值函数", "深拷贝"],
-          "common_misconceptions": [
-            "忘记检查自我赋值",
-            "忘记释放旧资源",
-            "返回类型写成 void 或 B 而不是 B&",
-            "返回 this 而不是 *this"
-          ],
-          "exam_patterns": [
-            "给代码填空: 补全 operator=",
-            "代码改错: 指出赋值函数中的问题",
-            "简述题: 自定义赋值函数需要注意什么"
-          ],
-          "generation_hints": "这是第9章最综合的考点。四个要素: (1)自我赋值检查 (2)释放旧资源 (3)复制新资源 (4)返回 *this。可以出代码分析题逐一考察。"
+          "related": ["copy-constructor", "shallow-assignment", "self-assignment"],
+          "common_misconceptions": ["混淆赋值和拷贝构造的触发时机", "A a2=a1调用赋值函数"],
+          "generation_hints": "赋值发生在两个对象都已存在时。缺省赋值=浅赋值。浅赋值后果:内存泄漏(原资源丢失)+重复释放。"
         },
         {
           "id": "self-assignment",
-          "name": "自我赋值",
-          "chapter": 9,
-          "aliases": ["自赋值", "self assignment"],
-          "tags": ["对象赋值", "this指针", "安全性"],
-          "exam_level": "medium",
+          "name": "自我赋值", "chapter": 9, "exam_level": "medium",
           "question_types": ["judgment", "choice"],
           "difficulty_baseline": "S-U",
-          "prerequisites": ["object-assignment", "this-pointer"],
           "related": ["custom-assignment-operator", "this-pointer"],
-          "wiki_links": ["自我赋值", "this指针", "自定义赋值函数"],
-          "common_misconceptions": [
-            "认为自我赋值只会通过 a = a; 发生",
-            "不知道 B& b2 = b1; b1 = b2; 也是自我赋值"
-          ],
-          "exam_patterns": [
-            "正误判断: a = a 不会产生任何问题 (错误，可能导致资源丢失)",
-            "选择题: 为什么要检查自我赋值"
-          ],
-          "generation_hints": "注意引用别名导致的隐式自我赋值。考察为什么在释放旧资源前必须检查。"
+          "common_misconceptions": ["自我赋值只会通过a=a发生", "B& b2=b1; b1=b2也是自我赋值"],
+          "generation_hints": "考察this!=&rhs检查的必要性。引用别名导致的隐式自我赋值。"
         },
         {
-          "id": "copy-vs-assignment",
-          "name": "拷贝构造 vs 赋值",
-          "chapter": 9,
-          "aliases": ["拷贝vs赋值", "区分拷贝和赋值"],
-          "tags": ["对象拷贝", "对象赋值", "对比辨析"],
-          "exam_level": "high",
+          "id": "custom-assignment-operator",
+          "name": "自定义赋值函数", "chapter": 9, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["self-assignment", "deep-copy", "chain-assignment"],
+          "common_misconceptions": ["忘记自我赋值检查", "忘记释放旧资源", "返回void或B而不是B&", "返回this而不是*this"],
+          "generation_hints": "四个要素:(1)自我赋值检查(2)释放旧资源(3)复制新资源(4)返回*this支持链式赋值。"
+        }
+      ]
+    },
+    "10": {
+      "title": "运算符重载",
+      "knowledge_points": [
+        {
+          "id": "operator-overload",
+          "name": "运算符重载", "chapter": 10, "exam_level": "high",
           "question_types": ["judgment", "choice", "short_answer"],
           "difficulty_baseline": "M-U",
-          "prerequisites": ["copy-constructor", "object-assignment"],
-          "related": ["copy-constructor", "object-assignment", "shallow-copy", "shallow-assignment"],
-          "wiki_links": ["拷贝构造函数", "对象赋值", "浅拷贝", "浅赋值"],
-          "common_misconceptions": [
-            "用 = 就是赋值 (错误)",
-            "拷贝构造和赋值没有本质区别"
-          ],
-          "exam_patterns": [
-            "给多行代码，标记每行的操作类型 (拷贝构造/赋值/普通构造)",
-            "选择题: 以下说法正确的是",
-            "简述题: 从触发时机、函数签名、资源处理角度对比拷贝构造和赋值"
-          ],
-          "generation_hints": "这是区分型考点，适合出对比辨析题。用 = 初始化的陷阱是经典考法。"
-        }
-      ],
-      "knowledge_chain": [
+          "related": ["binary-operator", "unary-operator", "friend"],
+          "common_misconceptions": ["可以创造新运算符", "可以改变优先级", "可以改变操作数个数", ".,.*,::,?:可以重载"],
+          "generation_hints": "基本限制:不能创造新运算符/改变操作数个数/改变优先级。至少一个操作数是自定义类型。.=()[]->必须是成员。"
+        },
         {
-          "id": "chain-copy-to-assignment",
-          "name": "对象复制全链条",
-          "nodes": ["浅拷贝", "深拷贝", "拷贝构造函数", "缺省拷贝构造函数", "自定义拷贝构造函数", "对象赋值", "浅赋值", "自定义赋值函数", "自我赋值"],
-          "description": "从对象拷贝的基本概念出发，经过浅/深拷贝的区别，到拷贝构造函数的实现，再对称地展开赋值侧的内容，最终到达自定义赋值函数的四个要素和自我赋值检查。这是第9章的核心知识链。"
+          "id": "binary-operator",
+          "name": "二元运算符重载", "chapter": 10, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["operator-overload", "paired-overload"],
+          "common_misconceptions": ["不知道成员和非成员形式的区别", "operator+返回引用"],
+          "generation_hints": "成员operator+(const T& rhs)const vs 自由operator+(const T&,const T&)。返回类型:不修改左操作数按值返回，修改返回引用。"
+        },
+        {
+          "id": "paired-overload",
+          "name": "成对重载", "chapter": 10, "exam_level": "medium",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["binary-operator"],
+          "common_misconceptions": ["+=和+需要独立实现"],
+          "generation_hints": "+ +=、- -=、* *=、/ /= 成对出现。建议先实现复合赋值再复用它实现普通运算。"
+        },
+        {
+          "id": "inc-dec-overload",
+          "name": "前置后置++/--重载",
+          "chapter": 10, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["unary-operator", "paired-overload"],
+          "common_misconceptions": ["后置++的int参数是业务参数", "不知道前后置返回类型区别"],
+          "generation_hints": "前置返回T&(修改后返回自身)。后置返回T(返回旧值)，int只用于区分。"
+        },
+        {
+          "id": "stream-operator",
+          "name": "流运算符重载",
+          "chapter": 10, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["friend", "binary-operator"],
+          "common_misconceptions": ["<<和>>写成成员函数", "返回类型写错"],
+          "generation_hints": "<<和>>通常写成非成员(左操作数是流对象)。返回ostream&/istream&以支持链式调用。常需声明为友元。"
+        }
+      ]
+    },
+    "11": {
+      "title": "动态内存管理",
+      "knowledge_points": [
+        {
+          "id": "storage-space",
+          "name": "存储空间",
+          "chapter": 11, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["heap", "stack", "dynamic-memory"],
+          "common_misconceptions": ["不知道五大存储区域", "混淆栈区和堆区的生命周期"],
+          "generation_hints": "五大区域:代码区/数据区/常量数据区/栈区/堆区。栈区自动管理，堆区手动管理。"
+        },
+        {
+          "id": "new-delete",
+          "name": "new和delete",
+          "chapter": 11, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["heap", "constructor", "destructor"],
+          "common_misconceptions": ["new只分配内存", "delete只释放内存", "delete p后p自动变nullptr"],
+          "generation_hints": "new做两件事:operator new分配内存+调构造函数。delete做三件事:判空+调析构+operator delete回收。delete后指针变悬空指针。"
+        },
+        {
+          "id": "new-array",
+          "name": "数组动态分配",
+          "chapter": 11, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["new-delete"],
+          "common_misconceptions": ["new[]可以配delete", "new可以配delete[]"],
+          "generation_hints": "new[]必须配delete[]。混用导致析构次数错误或未定义行为。"
+        },
+        {
+          "id": "smart-pointer",
+          "name": "智能指针",
+          "chapter": 11, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["raii", "shared-pointer", "heap"],
+          "common_misconceptions": ["智能指针只是语法糖", "不知道RAII在智能指针中的作用"],
+          "generation_hints": "核心原理:资源释放放入析构函数，利用RAII自动释放。离开作用域自动释放资源。"
+        },
+        {
+          "id": "shared-pointer",
+          "name": "共享指针",
+          "chapter": 11, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["smart-pointer", "reference-counting", "copy-constructor", "assignment-operator"],
+          "common_misconceptions": ["不知道引用计数的维护时机", "赋值函数忘记处理自我赋值和旧资源"],
+          "generation_hints": "引用计数:构造+1，析构-1，减到0释放。拷贝构造、赋值函数、析构函数都要维护引用计数。"
+        }
+      ]
+    },
+    "12": {
+      "title": "其他语言机制",
+      "knowledge_points": [
+        {
+          "id": "type-conversion",
+          "name": "类型转换",
+          "chapter": 12, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["conversion-ctor", "conversion-func", "explicit"],
+          "common_misconceptions": ["转换构造函数和转换函数写在同一类中", "转换函数有返回类型"],
+          "generation_hints": "转换构造函数:写在目标类型中，把其他类型转成本类。转换函数:operator 目标类型()const，写在源类型中，不写返回类型。explicit禁止隐式转换。"
+        },
+        {
+          "id": "namespace",
+          "name": "名字空间",
+          "chapter": 12, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["using-declaration", "scope-resolution"],
+          "common_misconceptions": ["名字空间和类一样不能分段定义", "匿名名字空间=static"],
+          "generation_hints": "名字空间分段定义(类不能)。::name从全局查找。匿名名字空间限制编译单元内可见。"
+        },
+        {
+          "id": "using-declaration",
+          "name": "名字汇入",
+          "chapter": 12, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["namespace", "scope-resolution"],
+          "common_misconceptions": ["using namespace N和using N::x风险一样大", "名字汇入汇入的是变量"],
+          "generation_hints": "using namespace N(汇入全部名字，冲突范围大)，using N::x(只汇入一个名字)，N::x(不汇入，最清晰)。汇入的是名字而非变量本身。"
+        },
+        {
+          "id": "friend",
+          "name": "友元",
+          "chapter": 12, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["encapsulation", "access-control"],
+          "common_misconceptions": ["友元是类成员", "友元关系双向", "友元关系可传递"],
+          "generation_hints": "友元不是成员，被授予访问私有成员权限。关系单向且不传递。局部破坏封装但避免接口完全公开。"
+        }
+      ]
+    },
+    "13": {
+      "title": "类间关系",
+      "knowledge_points": [
+        {
+          "id": "association",
+          "name": "关联",
+          "chapter": 13, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["aggregation", "composition", "dependency"],
+          "common_misconceptions": ["关联和依赖分不清", "代码形式=逻辑关系"],
+          "generation_hints": "数据成员=关联，参数/返回值/函数体临时使用=依赖。A*作为数据成员=关联(较强)，函数参数中的A*=依赖(较弱)。"
+        },
+        {
+          "id": "aggregation-composition",
+          "name": "聚合与组合",
+          "chapter": 13, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["association", "composition", "lifecycle"],
+          "common_misconceptions": ["聚合和组合没有区别", "学生宿舍例题中分不清谁控制生命周期"],
+          "generation_hints": "核心区分:是否由整体负责部分的创建与销毁。组合=整体创建并销毁部分。聚合=整体包含部分但不控制生命周期。"
+        },
+        {
+          "id": "dependency",
+          "name": "依赖",
+          "chapter": 13, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["association", "aggregation-composition"],
+          "common_misconceptions": ["依赖和关联只是代码写法不同"],
+          "generation_hints": "A临时使用B完成某函数=依赖。另一类只出现在函数参数、返回值或函数体中。关系最弱。"
+        }
+      ]
+    },
+    "14": {
+      "title": "类的设计",
+      "knowledge_points": [
+        {
+          "id": "oop-three-features",
+          "name": "面向对象三大特征",
+          "chapter": 14, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["encapsulation", "inheritance-basics", "polymorphism"],
+          "common_misconceptions": ["三大特征独立无关", "封装=数据private就完了"],
+          "generation_hints": "三大特征:封装和信息隐蔽、继承、多态。它们相互关联:封装隐藏细节，继承复用结构，多态支持变化。"
+        },
+        {
+          "id": "abstraction-representation",
+          "name": "抽象与表示",
+          "chapter": 14, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["class-design", "encapsulation"],
+          "common_misconceptions": ["抽象=画UML图", "表示=C++代码"],
+          "generation_hints": "抽象不依赖语言，表示才涉及C++类。先抽象类型/行为/数据，再用C++类表示。抽象比表示更难。"
+        },
+        {
+          "id": "class-design-principles",
+          "name": "类设计原则",
+          "chapter": 14, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["abstraction-representation", "class-method", "singleton"],
+          "common_misconceptions": ["类拆分越细越好", "类合并=设计不好"],
+          "generation_hints": "设计考虑:拆分/合并、数据关系、行为关系、行为可见性、参数抽象、实现委托。职责过多要拆，拆得过细互相访问频繁要合。"
+        }
+      ]
+    },
+    "15": {
+      "title": "继承",
+      "knowledge_points": [
+        {
+          "id": "inheritance-basics",
+          "name": "继承基础",
+          "chapter": 15, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["derived-class", "access-control-inheritance", "ctor-dtor-order"],
+          "common_misconceptions": ["继承就是代码复用", "派生类不包含基类private成员"],
+          "generation_hints": "黑盒复用(通过接口使用)vs白盒复用(通过继承吸收成员)。基类private成员在派生类中存在但不可直接访问。class默认private继承。"
+        },
+        {
+          "id": "ctor-dtor-order",
+          "name": "派生类构造析构顺序",
+          "chapter": 15, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["inheritance-basics", "init-list", "virtual-destructor"],
+          "common_misconceptions": ["构造和析构顺序相同", "初始化列表顺序决定基类构造顺序"],
+          "generation_hints": "构造:先基类后派生类。析构:先派生类后基类。基类构造顺序看继承列表顺序，不看初始化列表书写顺序。"
+        },
+        {
+          "id": "inheritance-hide",
+          "name": "同名隐藏",
+          "chapter": 15, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["function-overload", "virtual-function", "override"],
+          "common_misconceptions": ["同名隐藏=函数重载", "不知道using可以解除隐藏"],
+          "generation_hints": "派生类同名函数隐藏基类所有同名函数(不管参数是否相同)。用using Base::f解除隐藏。与override(虚函数重写)不同。"
+        },
+        {
+          "id": "inheritance-vs-composition",
+          "name": "继承与组合的选择",
+          "chapter": 15, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["inheritance-basics", "aggregation-composition"],
+          "common_misconceptions": ["能复用代码就继承", "is-a和has-a只是语法区别"],
+          "generation_hints": "public继承=is-a关系。has-a优先用组合。private继承常可用组合替代。优先组合。"
+        }
+      ]
+    },
+    "16": {
+      "title": "继承下的类型转换",
+      "knowledge_points": [
+        {
+          "id": "upcast",
+          "name": "向上类型转换",
+          "chapter": 16, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["downcast", "object-slicing", "inheritance-basics"],
+          "common_misconceptions": ["对象向上转换也保留派生类数据", "指针和引用向上转换会丢数据"],
+          "generation_hints": "派生类转基类，public继承下安全。指针/引用向上转换不丢数据。对象向上转换=对象切片(只保留基类部分)。"
+        },
+        {
+          "id": "downcast",
+          "name": "向下类型转换",
+          "chapter": 16, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["upcast", "dynamic-cast", "rtti"],
+          "common_misconceptions": ["static_cast可以安全向下转换", "dynamic_cast不需要虚函数"],
+          "generation_hints": "基类转派生类需确认真实类型。dynamic_cast指针失败返回nullptr，引用失败抛异常。需要多态类型(有虚函数)。"
+        },
+        {
+          "id": "four-casts",
+          "name": "四种类型转换操作符",
+          "chapter": 16, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["upcast", "downcast", "const-cast", "reinterpret-cast"],
+          "common_misconceptions": ["static_cast和dynamic_cast可以互换", "const_cast可以让常对象安全被修改", "reinterpret_cast很安全"],
+          "generation_hints": "static_cast(编译期)、dynamic_cast(运行时RTTI)、const_cast(去/加const)、reinterpret_cast(底层重解释，最危险)。对比考察。"
+        },
+        {
+          "id": "object-slicing",
+          "name": "对象切片",
+          "chapter": 16, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["upcast", "virtual-function"],
+          "common_misconceptions": ["Base b=derived不会丢数据", "不知道对象切片和虚函数的关系"],
+          "generation_hints": "按值向上转换=对象切片。只保留基类部分，派生类特有成员被裁剪。这也是为什么多态通常用指针/引用而不是对象。"
+        }
+      ]
+    },
+    "17": {
+      "title": "多重继承",
+      "knowledge_points": [
+        {
+          "id": "multiple-inheritance",
+          "name": "多重继承",
+          "chapter": 17, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["diamond-problem", "virtual-base", "interface-class"],
+          "common_misconceptions": ["多重继承的构造顺序看初始化列表书写顺序", "不知道名字冲突怎么解决"],
+          "generation_hints": "一个派生类有多个直接基类。构造按继承列表顺序。名字冲突用A::f()限定或用using引入。"
+        },
+        {
+          "id": "diamond-problem",
+          "name": "菱形结构",
+          "chapter": 17, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["multiple-inheritance", "virtual-base"],
+          "common_misconceptions": ["菱形结构和普通名字冲突一样处理", "虚基类没有代价"],
+          "generation_hints": "共同基类经两条路径进入最终派生类。问题:共同基类重复。解:虚基类(virtual public)让共同基类在最终派生类只保留一份。代价:布局复杂、指针调整。"
+        },
+        {
+          "id": "interface-class",
+          "name": "接口类",
+          "chapter": 17, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["multiple-inheritance", "abstract-class", "diamond-problem"],
+          "common_misconceptions": ["接口类和抽象类完全相同", "接口类可以有数据成员"],
+          "generation_hints": "接口类无实例数据，只描述公共行为契约(纯虚函数+虚析构)。接口继承避免多份状态数据的菱形问题。现代设计更倾向接口继承。"
+        }
+      ]
+    },
+    "18": {
+      "title": "虚函数与动态绑定",
+      "knowledge_points": [
+        {
+          "id": "static-dynamic-binding",
+          "name": "静态编联与动态编联",
+          "chapter": 18, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["virtual-function", "vtable", "polymorphism"],
+          "common_misconceptions": ["虚函数调用跳过编译检查", "所有函数调用都是动态编联"],
+          "generation_hints": "静态编联=编译期确定调用目标(非虚函数/重载)。动态编联=运行期根据动态类型确定(虚函数)。虚调用前仍先做静态类型检查。"
+        },
+        {
+          "id": "virtual-function",
+          "name": "虚函数",
+          "chapter": 18, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["vtable", "virtual-destructor", "override", "abstract-class"],
+          "common_misconceptions": ["虚函数=纯虚函数", "非虚函数也能被override", "构造函数可以是virtual"],
+          "generation_hints": "virtual声明支持动态编联。派生类重写时虚表替换对应槽位，新增虚函数追加新槽位。构造函数中虚调用只走本地版本。"
+        },
+        {
+          "id": "vtable",
+          "name": "虚函数表",
+          "chapter": 18, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["virtual-function", "object-size", "dynamic-binding"],
+          "common_misconceptions": ["虚表中存的是对象", "每个对象有一份虚表"],
+          "generation_hints": "虚表=函数指针数组(每个类一份)。虚表指针=对象中隐藏指针指向虚表(每个对象一个)。重写=替换槽位，新增=追加槽位。"
+        },
+        {
+          "id": "virtual-destructor",
+          "name": "虚析构函数",
+          "chapter": 18, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["virtual-function", "destructor", "polymorphism"],
+          "common_misconceptions": ["多态基类不需要虚析构", "所有类都需要虚析构"],
+          "generation_hints": "多态基类通常必须有虚析构。否则delete基类指针时可能不调用派生类析构，导致资源泄漏。"
+        },
+        {
+          "id": "abstract-class",
+          "name": "抽象类与纯虚函数",
+          "chapter": 18, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "S-U",
+          "related": ["virtual-function", "interface-class"],
+          "common_misconceptions": ["纯虚函数不能有定义", "有纯虚函数定义的类可以实例化"],
+          "generation_hints": "至少一个纯虚函数=抽象类，不能实例化。纯虚函数可在类外给默认实现(pure virtual definition)，但类仍抽象。"
+        }
+      ]
+    },
+    "19": {
+      "title": "多态机制应用",
+      "knowledge_points": [
+        {
+          "id": "polymorphism-types",
+          "name": "静态多态与动态多态",
+          "chapter": 19, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-U",
+          "related": ["virtual-function", "template-method", "static-dynamic-binding"],
+          "common_misconceptions": ["多态=虚函数", "不知道模板也是多态"],
+          "generation_hints": "同一消息请求执行不同代码体。静态多态:重载、模板(编译期决定)。动态多态:虚函数(运行期决定)。C++虚机制看目标对象动态类型。"
+        },
+        {
+          "id": "template-method",
+          "name": "模板方法模式",
+          "chapter": 19, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["virtual-function", "polymorphism-types", "abstract-class"],
+          "common_misconceptions": ["模板方法和C++模板是同一个概念"],
+          "generation_hints": "父类定流程骨架，子类定步骤实现。非虚接口+虚函数实现。Software::develop()调design()/code()/test()/maintain()。"
+        },
+        {
+          "id": "virtual-clone",
+          "name": "虚拟拷贝构造函数",
+          "chapter": 19, "exam_level": "high",
+          "question_types": ["judgment", "choice"],
+          "difficulty_baseline": "M-U",
+          "related": ["virtual-function", "copy-constructor", "polymorphism-types"],
+          "common_misconceptions": ["拷贝构造函数可以virtual", "不知道clone()怎么工作"],
+          "generation_hints": "拷贝构造不能virtual。用clone()虚函数模拟:内部调用本类拷贝构造，返回按动态类型复制的新对象。"
+        },
+        {
+          "id": "subclass-explosion",
+          "name": "子类爆炸",
+          "chapter": 19, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["polymorphism-types", "inheritance-vs-composition", "class-design-principles"],
+          "common_misconceptions": ["虚机制总是越多越好", "所有变化方向都适合继承"],
+          "generation_hints": "多方向变化用继承组合→子类数爆炸。解:拆成多个水平协作对象，每个方向一棵小继承树。用关联/依赖拆分变化方向。"
+        }
+      ]
+    },
+    "20": {
+      "title": "面向对象综合设计",
+      "knowledge_points": [
+        {
+          "id": "design-principles",
+          "name": "面向对象设计原则",
+          "chapter": 20, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "M-A",
+          "related": ["dependency", "association", "inheritance-vs-composition", "polymorphism-types"],
+          "common_misconceptions": ["设计=画类图", "依赖/关联/组合/继承可以任意选用"],
+          "generation_hints": "三大原则:封装变化、针对接口编程、优先组合。根据关系强度选择:临时用→依赖，长期持有→关联，整体-部分控生命周期→组合，is-a→public继承。"
+        },
+        {
+          "id": "dependency-inheritance",
+          "name": "依赖与继承的配合",
+          "chapter": 20, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "C-A",
+          "related": ["dependency", "inheritance-basics", "polymorphism-types"],
+          "common_misconceptions": ["依赖和继承是互斥的"],
+          "generation_hints": "A::f(Parent& p){p.func();} 通过参数依赖Parent，实际对象可以是任何派生类。适合一次调用中使用某对象的场景。"
+        },
+        {
+          "id": "association-inheritance",
+          "name": "关联与继承的配合",
+          "chapter": 20, "exam_level": "high",
+          "question_types": ["judgment", "choice", "short_answer"],
+          "difficulty_baseline": "C-A",
+          "related": ["association", "inheritance-basics", "aggregation-composition"],
+          "common_misconceptions": ["关联和继承不能同时使用"],
+          "generation_hints": "A长期关联Parent(指针/引用成员)，Parent的派生类可扩展行为。适合当前对象持有或长期使用另一对象的场景。新增派生类不应导致关联方修改。"
         }
       ]
     }
@@ -250,26 +839,21 @@
       "format": "判断以下说法是否正确: 「{statement}」",
       "options": "正确 / 错误",
       "difficulty_range": ["S-R", "S-U", "M-U"],
-      "generation_rule": "生成一个关于知识点的陈述，其中包含一个容易混淆的细节(正或误)。陈述应简短明确，不超过两句话。"
+      "generation_rule": "生成一个关于知识点的陈述，包含一个容易混淆的细节(正或误)。陈述简短明确，不超过两句话。"
     },
     "choice": {
       "name": "单项选择题",
       "format": "题目描述 + 4个选项 (A/B/C/D)",
-      "options": "4个选项，其中1个正确，3个干扰项",
+      "options": "4个选项，1个正确，3个干扰项",
       "difficulty_range": ["S-U", "M-U", "M-A"],
-      "generation_rule": "生成4个选项。正确选项要精准无歧义。干扰项应来自常见误区或关联知识点的混淆点，让用户需要真正理解才能区分。"
+      "generation_rule": "生成4个选项。正确选项精准无歧义。干扰项来自常见误区或关联知识点的混淆点，让用户需要真正理解才能区分。"
     },
     "short_answer": {
       "name": "简述题",
       "format": "开放式问题，用户用自然语言回答",
       "options": "无固定选项",
       "difficulty_range": ["M-A", "C-A"],
-      "generation_rule": "生成一个需要用户组织语言回答的问题。用户答案不需要和标准答案逐字匹配，但应覆盖关键要点。判题时按要点给分，并指出遗漏的部分。"
+      "generation_rule": "生成需要用户组织语言回答的问题。判题按要点给分，不要求逐字匹配，指出遗漏的部分。"
     }
-  },
-  "exam_style_notes": {
-    "judgment_characteristics": "通常考察容易混淆的概念区分。常用陷阱: (1)用=就是赋值 (2)拷贝构造和赋值的触发时机 (3)const 和指针组合的正确用法。",
-    "choice_characteristics": "选项设计精巧，干扰项通常来自高频误区。常出现代码分析题，让用户判断某段代码的行为或问题。",
-    "short_answer_characteristics": "通常考察对比辨析或原理解释。需要用户用自然语言组织，但关键要点明确。不会要求写大量代码，侧重概念理解和分析。"
   }
 }

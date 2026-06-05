@@ -1,4 +1,14 @@
 {
-  "chains": [],
-  "knowledge_points_linked": []
+  "chains": [
+    {
+      "chain": "数组名退化 → sizeof 的特殊行为 → 指针与数组的底层区别",
+      "nodes": [
+        "数组名退化 → sizeof 的特殊行为 → 指针与数组的底层区别"
+      ],
+      "first_seen": "2026-06-05T03:29:36.689588+00:00"
+    }
+  ],
+  "knowledge_points_linked": [
+    "数组名退化 → sizeof 的特殊行为 → 指针与数组的底层区别"
+  ]
 }

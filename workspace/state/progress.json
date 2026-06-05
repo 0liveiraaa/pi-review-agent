@@ -1,10 +1,30 @@
 {
   "current_session": null,
   "history": {
-    "total_questions_answered": 0,
-    "total_correct": 0,
+    "total_questions_answered": 1,
+    "total_correct": 1,
     "total_incorrect": 0,
-    "chapters_covered": [],
-    "sessions": []
+    "chapters_covered": [
+      "指针",
+      "2"
+    ],
+    "sessions": [
+      {
+        "session_id": "s_2026-06-05T03-26-32-222758+00-00",
+        "date": "20260605",
+        "scope": "2",
+        "total_questions": 0,
+        "correct": 0,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T03-26-54-787061+00-00",
+        "date": "20260605",
+        "scope": "指针",
+        "total_questions": 1,
+        "correct": 1,
+        "incorrect": 0
+      }
+    ]
   }
 }
