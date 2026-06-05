@@ -15,7 +15,9 @@
 """
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import io
@@ -34,8 +36,6 @@ REFERENCE = PROJECT_ROOT / "reference"
 DATA_DIR = WORKSPACE / "data"
 STATE_DIR = WORKSPACE / "state"
 ARCHIVE_DIR = WORKSPACE / "archive"
-PROMPT_DIR = WORKSPACE / "prompts"
-
 # ─── 状态文件路径 ───
 PROGRESS_FILE = STATE_DIR / "progress.json"
 WRONG_BOOK_FILE = STATE_DIR / "wrong_book.json"
@@ -43,13 +43,24 @@ KNOWLEDGE_CHAINS_FILE = STATE_DIR / "knowledge_chains.json"
 KNOWLEDGE_INDEX_FILE = DATA_DIR / "knowledge_index.json"
 
 # ─── Pi 可执行文件 ───
-if sys.platform == "win32":
-    PI_EXE = r"C:\Users\25173\AppData\Roaming\npm\pi.cmd"
-else:
-    PI_EXE = "pi"
+def _find_pi() -> str:
+    """自动发现 pi 可执行文件路径"""
+    import shutil
+    if sys.platform == "win32":
+        # 先尝试 PATH 中的 pi.cmd，再尝试常见 npm 全局路径
+        found = shutil.which("pi.cmd") or shutil.which("pi")
+        if found:
+            return found
+        for base in [os.path.expandvars(r"%APPDATA%\npm"), os.path.expandvars(r"%LOCALAPPDATA%\npm")]:
+            candidate = os.path.join(base, "pi.cmd")
+            if os.path.isfile(candidate):
+                return candidate
+        raise FileNotFoundError("未找到 pi.cmd。请确保已安装: npm install -g @earendil-works/pi-coding-agent")
+    return "pi"
 
-# ─── Skill Prompt (通过 --system-prompt 显式传给 Pi) ───
-SKILL_PROMPT_PATH = PROMPT_DIR / "review-assistant.md"
+PI_EXE = _find_pi()
+
+# ─── Skill 通过 .pi/skills/review-assistant/SKILL.md 自动发现 ───
 
 
 # ═══════════════════════════════════════════
@@ -66,12 +77,6 @@ def save_json(path: Path, data: dict):
     """保存 JSON 文件"""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def load_skill_prompt() -> str:
-    """加载 Skill Prompt"""
-    with open(SKILL_PROMPT_PATH, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 def timestamp_now() -> str:
@@ -94,25 +99,19 @@ def generate_question_id() -> str:
 # Pi 调用
 # ═══════════════════════════════════════════
 
-def call_pi(prompt: str, system_prompt: str = None, timeout: int = 120) -> str:
+def call_pi(prompt: str, timeout: int = 120) -> str:
     """
-    调用 Pi (--print 模式，一次性调用)。
-    系统提示通过 --system-prompt 显式传入，由 Python CLI 控制。
-    若未传入则自动调用 load_skill_prompt() 加载。
+    调用 Pi (--print 模式)。
+    系统提示由 .pi/SYSTEM.md 自动加载，Skill 由 .pi/skills/ 自动发现。
     """
-    if system_prompt is None:
-        system_prompt = load_skill_prompt()
-
     try:
         result = subprocess.run(
             [
                 PI_EXE, "-p",           # 非交互 print 模式
-                "--system-prompt", system_prompt,
                 "-nbt",                  # 禁用内置工具 (bash/edit/write)
-                "--tools", "read",       # 只开放 read，让 Pi 可查阅 reference/
+                "--tools", "read",       # 只开放 read
                 "--no-session",          # 不保存 session
                 "-nc",                   # 不加载 AGENTS.md
-                "-ns",                   # 不加载 skills
                 "-ne",                   # 不加载 extensions
                 "--thinking", "off",     # 关闭思考模式
             ],
@@ -122,7 +121,7 @@ def call_pi(prompt: str, system_prompt: str = None, timeout: int = 120) -> str:
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            cwd=str(PROJECT_ROOT),       # 项目根目录，让 .pi/SYSTEM.md 生效
+            cwd=str(PROJECT_ROOT),       # 项目根目录，.pi/ 和 reference/ 可访问
         )
         if result.returncode != 0:
             print(f"[警告] Pi 调用返回非零退出码: {result.returncode}")
@@ -290,12 +289,15 @@ def build_context(knowledge_point: dict, difficulty: str, question_type: str) ->
     weaknesses = get_recent_weaknesses()
     chains = load_json(KNOWLEDGE_CHAINS_FILE)
 
-    ctx = f"""【复习范围】{session.get('scope', '未指定')}
+    ctx = f"""请使用 /skill:review-assistant 中的题型模板。
+
+【复习范围】{session.get('scope', '未指定')}
 【当前进度】第 {session.get('current_question_index', 0) + 1} 题 | 已答 {session.get('total_questions', 0)} 题 (正确 {session.get('correct', 0)}, 错误 {session.get('incorrect', 0)})
 【当前知识点】{knowledge_point['name']} (ID: {knowledge_point['id']}) | 难度: {difficulty}
 【关联知识点】{', '.join(knowledge_point.get('related', [])[:5])}
 【常见误区】{', '.join(knowledge_point.get('common_misconceptions', [])[:3])}
 【出题提示】{knowledge_point.get('generation_hints', '无特殊提示')}
+【参考路径】{str(REFERENCE)}
 """
 
     if weaknesses:
@@ -312,9 +314,9 @@ def build_context(knowledge_point: dict, difficulty: str, question_type: str) ->
     ctx += f"""
 
 ---
-## 当前子任务: generate_question
+## 子任务: generate_question
 
-请根据以上知识点，生成一道 {difficulty} 级别的 {_type_name(question_type)} 题。
+根据以上知识点，用 skill 中的模板生成一道 {difficulty} 级别的 {_type_name(question_type)} 题。
 
 只输出题目文本。不要输出解析、答案或归档。"""
 
@@ -324,9 +326,7 @@ def build_context(knowledge_point: dict, difficulty: str, question_type: str) ->
 def build_grade_context(question: dict, user_answer: str) -> str:
     """组装判题上下文"""
     q_json = json.dumps(question, ensure_ascii=False, indent=2)
-    return f"""## 当前子任务: grade_and_explain
-
-以下是当前题目和用户答案:
+    return f"""请使用 /skill:review-assistant 中的判题标准和输出格式。
 
 【题目 JSON】
 {q_json}
@@ -334,7 +334,7 @@ def build_grade_context(question: dict, user_answer: str) -> str:
 【用户答案】
 {user_answer}
 
-请判断用户答案是否正确，输出判题结果、正确答案和 Level 1 解析。"""
+请判断用户答案是否正确，按 skill 中的格式输出判题结果、正确答案和 Level 1 解析。"""
 
 
 def build_discuss_context(question: dict, grading: str, user_query: str, discussion_history: list) -> str:
@@ -342,8 +342,9 @@ def build_discuss_context(question: dict, grading: str, user_query: str, discuss
     q_json = json.dumps(question, ensure_ascii=False, indent=2)
     history_text = "\n".join(discussion_history) if discussion_history else "（本轮讨论开始）"
 
-    return f"""## 当前子任务: discuss
+    return f"""请使用 /skill:review-assistant 中的讨论指南。
 
+【参考路径】{str(REFERENCE)}
 【题目】
 {q_json}
 
@@ -356,7 +357,7 @@ def build_discuss_context(question: dict, grading: str, user_query: str, discuss
 【用户追问】
 {user_query}
 
-请回答用户的问题。可以自然展开关联知识点 (Level 2)，但不要强行扩展。用户没问的不要主动展开。"""
+按 skill 中的 Level 2 讨论规则回答。一次聚焦用户问的内容，不铺开太多。"""
 
 
 def build_archive_context(
@@ -370,9 +371,9 @@ def build_archive_context(
     q_json = json.dumps(question, ensure_ascii=False, indent=2)
     history_text = "\n".join(discussion_history) if discussion_history else "无讨论"
 
-    return f"""## 当前子任务: archive
+    return f"""请使用 /skill:review-assistant 中的归档格式。
 
-这是本题生命周期的最后一步。请根据以下信息生成最终归档。
+这是本题生命周期的最后一步。根据以下信息生成 JSON 归档。
 
 【当前题目序号】{question_index}
 
@@ -388,10 +389,7 @@ def build_archive_context(
 【完整讨论历史】
 {history_text}
 
-请同时输出 JSON 归档 (用于状态管理) 和 MD 归档 (用于完整记录)。
-
-JSON 归档放在 ```json 代码块中。
-MD 归档放在 ```markdown 代码块中。"""
+请按 skill 中的格式输出 JSON 归档 (```json)，包含 question_id、knowledge_points、difficulty、type、timestamp、question_text、user_answer、correct_answer、explanation_l1、is_correct、discussion_summary、knowledge_chain_l3、suggestion_next。不需要输出 MD。"""
 
 
 def _type_name(question_type: str) -> str:
@@ -404,76 +402,136 @@ def _type_name(question_type: str) -> str:
 # 归档处理
 # ═══════════════════════════════════════════
 
+MD_TEMPLATE = """---
+question_id: {question_id}
+knowledge_points: {knowledge_points}
+difficulty: {difficulty}
+type: {type}
+timestamp: {timestamp}
+is_correct: {is_correct}
+---
+
+# 题目归档: {question_id}
+
+## 题目
+{question_text}
+
+## 用户答案
+{user_answer}
+
+## 正确答案 + 解析
+{correct_answer}
+
+{explanation}
+
+## 讨论总结
+### 错误根因
+{core_misconception}
+
+### 确认的知识点
+{clarified_points}
+
+### 用户自我纠正
+{user_self_correction}
+
+### 遗留问题
+{lingering_questions}
+
+## 知识链 (Level 3)
+{knowledge_chain}
+
+## 后续建议
+{suggestion_next}
+"""
+
+
 def parse_and_save_archive(pi_output: str, question_id: str):
-    """解析 Pi 归档输出，分别保存 JSON 和 MD"""
-    # 提取 JSON 代码块
+    """解析 Pi 的 JSON 归档输出，保存 JSON，并根据模板生成 MD"""
     json_match = re.search(r"```json\s*\n(.*?)\n```", pi_output, re.DOTALL)
-    md_match = re.search(r"```markdown\s*\n(.*?)\n```", pi_output, re.DOTALL)
 
-    if json_match:
-        try:
-            archive_json = json.loads(json_match.group(1))
-            # 保存 JSON 归档
-            json_path = ARCHIVE_DIR / "sessions" / f"{question_id}.json"
-            save_json(json_path, archive_json)
-
-            # 更新错题本
-            if not archive_json.get("is_correct", True):
-                error_type = _classify_error(archive_json)
-                save_wrong_entry(
-                    question_id=question_id,
-                    knowledge_points=archive_json.get("knowledge_points", []),
-                    error_type=error_type,
-                    error_detail=archive_json.get("discussion_summary", {}).get("core_misconception", ""),
-                )
-
-            # 更新知识链
-            chain = archive_json.get("knowledge_chain_l3", [])
-            if chain:
-                update_knowledge_chains(chain)
-
-            # 更新进度
-            progress = load_json(PROGRESS_FILE)
-            session = progress.get("current_session", {})
-            if session:
-                covered = set(session.get("covered_knowledge_points", []))
-                for kp in archive_json.get("knowledge_points", []):
-                    covered.add(kp)
-                session["covered_knowledge_points"] = list(covered)
-
-                remaining = session.get("remaining_knowledge_points", [])
-                for kp in archive_json.get("knowledge_points", []):
-                    if kp in remaining:
-                        remaining.remove(kp)
-                session["remaining_knowledge_points"] = remaining
-
-                session["total_questions"] = session.get("total_questions", 0) + 1
-                if archive_json.get("is_correct", True):
-                    session["correct"] = session.get("correct", 0) + 1
-                else:
-                    session["incorrect"] = session.get("incorrect", 0) + 1
-
-                disc = archive_json.get("discussion_summary", {})
-                lingering = disc.get("lingering_questions", [])
-                session["last_lingering_question"] = lingering[0] if lingering else None
-
-                progress["current_session"] = session
-                save_json(PROGRESS_FILE, progress)
-
-            print(f"\n  ✅ 归档已保存: {json_path}")
-
-        except json.JSONDecodeError as e:
-            print(f"\n  ⚠️ JSON 解析失败: {e}")
-    else:
+    if not json_match:
         print("\n  ⚠️ 未在 Pi 输出中找到 JSON 归档块")
+        return
 
-    if md_match:
-        md_path = ARCHIVE_DIR / "sessions" / f"{question_id}.md"
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(md_match.group(1))
-        print(f"  ✅ MD 归档已保存: {md_path}")
-    else:
-        print("  ⚠️ 未在 Pi 输出中找到 MD 归档块")
+    try:
+        archive_json = json.loads(json_match.group(1))
+    except json.JSONDecodeError as e:
+        print(f"\n  ⚠️ JSON 解析失败: {e}")
+        return
+
+    # ─── 保存 JSON 归档 ───
+    json_path = ARCHIVE_DIR / "sessions" / f"{question_id}.json"
+    save_json(json_path, archive_json)
+
+    # ─── 从 JSON 生成 MD 归档 ───
+    disc = archive_json.get("discussion_summary", {})
+    chain = archive_json.get("knowledge_chain_l3", [])
+
+    md_content = MD_TEMPLATE.format(
+        question_id=question_id,
+        knowledge_points=", ".join(archive_json.get("knowledge_points", [])),
+        difficulty=archive_json.get("difficulty", ""),
+        type=archive_json.get("type", ""),
+        timestamp=archive_json.get("timestamp", timestamp_now()),
+        is_correct=archive_json.get("is_correct", False),
+        question_text=archive_json.get("question_text", ""),
+        user_answer=archive_json.get("user_answer", ""),
+        correct_answer=archive_json.get("correct_answer", ""),
+        explanation=archive_json.get("explanation_l1", ""),
+        core_misconception=disc.get("core_misconception", "无"),
+        clarified_points="\n".join(f"- {p}" for p in disc.get("clarified_points", [])) or "- 无",
+        user_self_correction=disc.get("user_self_correction") or "无",
+        lingering_questions="\n".join(f"- {q}" for q in disc.get("lingering_questions", [])) or "- 无",
+        knowledge_chain=" → ".join(chain) if chain else "（无）",
+        suggestion_next=archive_json.get("suggestion_next", "继续加油！"),
+    )
+
+    md_path = ARCHIVE_DIR / "sessions" / f"{question_id}.md"
+    md_path.write_text(md_content, encoding="utf-8")
+
+    # ─── 更新错题本 ───
+    if not archive_json.get("is_correct", True):
+        error_type = _classify_error(archive_json)
+        save_wrong_entry(
+            question_id=question_id,
+            knowledge_points=archive_json.get("knowledge_points", []),
+            error_type=error_type,
+            error_detail=disc.get("core_misconception", ""),
+        )
+
+    # ─── 更新知识链 ───
+    if chain:
+        update_knowledge_chains(chain)
+
+    # ─── 更新进度 ───
+    progress = load_json(PROGRESS_FILE)
+    session = progress.get("current_session", {})
+    if session:
+        covered = set(session.get("covered_knowledge_points", []))
+        for kp in archive_json.get("knowledge_points", []):
+            covered.add(kp)
+        session["covered_knowledge_points"] = list(covered)
+
+        remaining = session.get("remaining_knowledge_points", [])
+        for kp in archive_json.get("knowledge_points", []):
+            if kp in remaining:
+                remaining.remove(kp)
+        session["remaining_knowledge_points"] = remaining
+
+        session["total_questions"] = session.get("total_questions", 0) + 1
+        if archive_json.get("is_correct", True):
+            session["correct"] = session.get("correct", 0) + 1
+        else:
+            session["incorrect"] = session.get("incorrect", 0) + 1
+
+        lingering = disc.get("lingering_questions", [])
+        session["last_lingering_question"] = lingering[0] if lingering else None
+
+        progress["current_session"] = session
+        save_json(PROGRESS_FILE, progress)
+
+    print(f"\n  ✅ JSON 归档: {json_path}")
+    print(f"  ✅ MD 归档:  {md_path}")
 
 
 def _classify_error(archive: dict) -> str:
@@ -508,8 +566,7 @@ def main():
     print("指令: 下一题(n) | 跳过(skip) | 提示(hint) | 总结(sum) | 退出(q)")
     print()
 
-    # 加载 Skill Prompt (显式控制，通过 --system-prompt 传给 Pi)
-    skill_prompt = load_skill_prompt()
+    # ─── 系统提示由 .pi/SYSTEM.md 自动加载，Skill 由 .pi/skills/ 自动发现 ───
 
     # 获取复习范围
     scope = input("🎯 请输入复习范围 (如 '第9章'): ").strip()
@@ -568,27 +625,26 @@ def main():
 
         # ─── 知识卡片 (可选) ───
         if show_card:
-            card_prompt = f"""## 当前子任务: show_card
-
-请展示以下知识点的复习卡片（概述 + 关键概念）:
+            card_prompt = f"""展示以下知识点的复习卡片。
 
 知识点: {kp['name']}
 章节: 第{kp['chapter']}章
 标签: {', '.join(kp.get('tags', []))}
+【参考路径】{str(REFERENCE)}
 
 格式:
-## 📝 {kp['name']} — 知识卡片
+## 知识点卡片: {kp['name']}
 
 ### 概述
-{（简要说明该知识点是什么）}
+（简要说明该知识点是什么，1-2段）
 
 ### 关键要点
 - 要点1
 - 要点2
 - 要点3
 
-### ⚠️ 易错提醒
-{（常见误区，如果有的话）}
+### 易错提醒
+（常见误区）
 
 卡片展示后提示用户: 输入「做题」开始做题，或输入「跳过」直接下一题。"""
 
@@ -674,10 +730,11 @@ def main():
                 return
 
             elif cmd == "提示" or cmd == "hint":
-                hint_prompt = f"""## 当前子任务: discuss
+                hint_prompt = f"""请使用 /skill:review-assistant 的讨论指南。
 
+【参考路径】{str(REFERENCE)}
 【题目】{question_text}
-用户请求提示 (不要直接给出答案，给一个引导性的提示帮助用户自己思考)。"""
+用户请求提示 (给一个引导性的提示帮助思考，不要直接给出答案)。"""
                 response = call_pi(hint_prompt)
                 print(f"\n💡 {response}")
                 discussion_history.append(f"[用户请求提示]")
@@ -742,9 +799,7 @@ def _generate_session_summary():
     recent_entries = wrong_book["entries"][-10:]
     chains = load_json(KNOWLEDGE_CHAINS_FILE)
 
-    summary_prompt = f"""## 子任务: session_summary
-
-请根据本次复习会话的数据，生成一份全局复盘报告。
+    summary_prompt = f"""根据本次复习会话的数据，生成一份全局复盘报告。
 
 【会话数据】
 {json.dumps(session, ensure_ascii=False, indent=2)}
@@ -761,7 +816,7 @@ def _generate_session_summary():
 3. 已构建的知识体系概览
 4. 下次复习建议"""
 
-    print("\n  🤔 正在生成全局复盘...\n")
+    print("\n  正在生成全局复盘...\n")
     report = call_pi(summary_prompt, timeout=180)
     print(report)
     print(f"\n{'=' * 60}")
