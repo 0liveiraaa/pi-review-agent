@@ -7,12 +7,16 @@ import { NOTE_DIR } from "./state.mjs";
  * 获取指定章的所有小节 [{ lesson, title, filePath }]
  */
 export function getChapterSections(chapterId) {
+  return getChapterSectionsFromDir(chapterId, NOTE_DIR);
+}
+
+export function getChapterSectionsFromDir(chapterId, noteDir = NOTE_DIR) {
   const sections = [];
-  if (!existsSync(NOTE_DIR)) return sections;
+  if (!existsSync(noteDir)) return sections;
 
   const prefix = `${chapterId}.`;
-  for (const subdir of readdirSync(NOTE_DIR)) {
-    const subPath = join(NOTE_DIR, subdir);
+  for (const subdir of readdirSync(noteDir)) {
+    const subPath = join(noteDir, subdir);
     if (!existsSync(subPath)) continue;
     if (!statSync(subPath).isDirectory()) continue;
     try {

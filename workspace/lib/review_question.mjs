@@ -65,7 +65,20 @@ export function parseChoiceAnswer(raw, question) {
   return [...new Set(letters)].join("");
 }
 
-export function buildQuestionPrompt({ mode, scope, chapter, knowledgePoint, difficulty, questionType, courseName }) {
+export function buildQuestionPrompt({
+  mode,
+  scope,
+  chapter,
+  knowledgePoint,
+  difficulty,
+  questionType,
+  courseName,
+  subjectPath,
+  knowledgeIndexPath,
+  cardsDir,
+  chaptersDir,
+  examPointsDir,
+}) {
   const typeLine = questionType ? `题型: ${questionType}` : "题型: 根据知识点选择 judgment/choice/multi_choice/short_answer";
   return [
     `请作为 ${courseName} 复习助手开始一次结构化复习回合。`,
@@ -76,12 +89,20 @@ export function buildQuestionPrompt({ mode, scope, chapter, knowledgePoint, diff
     `难度: ${difficulty || "S-U"}`,
     typeLine,
     "",
+    "当前科目资料包:",
+    subjectPath ? `- 科目元描述: ${subjectPath}` : "",
+    knowledgeIndexPath ? `- 知识点索引: ${knowledgeIndexPath}` : "",
+    cardsDir ? `- 概念卡片目录: ${cardsDir}` : "",
+    chaptersDir ? `- 章节材料目录: ${chaptersDir}` : "",
+    examPointsDir ? `- 考点总结目录: ${examPointsDir}` : "",
+    "",
     "流程要求:",
-    "1. 先使用 Read 工具读取相关参考资料或历史归档。",
+    "1. 先使用 Read 工具读取科目元描述和相关参考资料或历史归档。",
     "2. 生成一道题，并只用 JSON 表示题目对象，字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1。",
     "3. 调用 review_answer 工具展示题目并收集用户答案。",
     "4. 使用 review-grade 的规则判题，输出 Level 1 解析。",
     "5. 讨论完成后调用 review_archive 工具保存结构化复盘。",
-    "6. 询问用户是否继续下一题、提高难度、总结或退出。",
+    "6. 如果用户要求总结或结束本次复习，必须调用 review_summary 工具保存会话总结报告。",
+    "7. 询问用户是否继续下一题、提高难度、总结或退出。",
   ].filter(Boolean).join("\n");
 }

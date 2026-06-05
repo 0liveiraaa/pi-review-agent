@@ -1,0 +1,17 @@
+{
+  "subjectId": "test-1780677806916",
+  "name": "测试科目",
+  "status": "draft",
+  "createdAt": "2026-06-05T16:43:26.919Z",
+  "updatedAt": "2026-06-05T16:43:26.930Z",
+  "sourceDir": "reference",
+  "paths": {
+    "subject": "subject.md",
+    "knowledgeIndex": "knowledge_index.json",
+    "cards": "cards",
+    "chapters": "chapters",
+    "examPoints": "exam_points",
+    "sourceMap": "source_map.json",
+    "qualityReport": "quality_report.md"
+  }
+}

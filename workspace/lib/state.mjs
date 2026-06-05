@@ -336,6 +336,25 @@ export function writeArchiveFiles(archive, questionId, sessionId) {
   console.log(`  ✅ 已归档 → ${sessionId}/${questionId}`);
 }
 
+export function writeSummaryFile(sessionId, report, meta = {}) {
+  if (!existsSync(SUMMARY_DIR)) mkdirSync(SUMMARY_DIR, { recursive: true });
+  const safeSessionId = sessionId || `s_${Date.now()}`;
+  const path = join(SUMMARY_DIR, `${safeSessionId}_总结.md`);
+  const frontmatter = [
+    "---",
+    `session_id: ${safeSessionId}`,
+    meta.date ? `date: ${meta.date}` : `date: ${dateStr()}`,
+    meta.scope ? `scope: ${String(meta.scope).replace(/\n/g, " ")}` : "",
+    meta.total_questions != null ? `total_questions: ${meta.total_questions}` : "",
+    meta.correct != null ? `correct: ${meta.correct}` : "",
+    meta.incorrect != null ? `incorrect: ${meta.incorrect}` : "",
+    "---",
+    "",
+  ].filter((line) => line !== "").join("\n");
+  writeFileSync(path, `${frontmatter}${String(report || "").trim()}\n`, "utf-8");
+  return path;
+}
+
 export function updateStateFromArchive(archive) {
   const disc = archive.discussion_summary || {};
   const chain = archive.knowledge_chain_l3 || [];

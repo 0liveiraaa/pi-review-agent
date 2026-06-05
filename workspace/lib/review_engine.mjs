@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { loadKnowledgeIndex, getKpIdsForScope, selectDifficulty, selectQuestionType, loadProgress } from "./state.mjs";
-import { getChapterSections } from "./chapters.mjs";
+import { getChapterSections, getChapterSectionsFromDir } from "./chapters.mjs";
 import { buildQuestionPrompt } from "./review_question.mjs";
 
 export const REVIEW_MODES = [
@@ -29,8 +30,68 @@ export const POST_TURN_ACTIONS = [
   { value: "exit", label: "退出", description: "结束当前复习。" },
 ];
 
-export function listChapters() {
-  const index = loadKnowledgeIndex();
+function getProfileIndex(profile) {
+  if (!profile?.knowledgeIndexPath) return loadKnowledgeIndex();
+  return JSON.parse(readFileSync(profile.knowledgeIndexPath, "utf-8"));
+}
+
+function getKpIdsForScopeInIndex(scope, index) {
+  if (!index || !scope) return [];
+  const kpIds = [];
+  const rawKeywords = String(scope).replace(/、|，/g, ",").split(",").map((s) => s.trim()).filter(Boolean);
+  const keywords = [];
+  const cnNum = {
+    "一": "1", "二": "2", "三": "3", "四": "4", "五": "5",
+    "六": "6", "七": "7", "八": "8", "九": "9", "十": "10",
+    "十一": "11", "十二": "12", "十三": "13", "十四": "14", "十五": "15",
+    "十六": "16", "十七": "17", "十八": "18", "十九": "19", "二十": "20",
+  };
+  for (const kw of rawKeywords) {
+    keywords.push(kw);
+    const m = kw.match(/第\s*(\d+)\s*章/);
+    if (m) keywords.push(m[1]);
+    for (const [cn, num] of Object.entries(cnNum)) {
+      if (kw.includes(cn)) {
+        keywords.push(kw.replace(cn, num));
+        break;
+      }
+    }
+  }
+
+  for (const [chapterId, chapterData] of Object.entries(index.chapters || {})) {
+    const chapterTitle = chapterData.title || "";
+    for (const kp of chapterData.knowledge_points || []) {
+      const searchText = [
+        chapterId,
+        `第${chapterId}章`,
+        chapterTitle,
+        kp.name,
+        ...(kp.aliases || []),
+        ...(kp.tags || []),
+      ].join(" ");
+      for (const kw of keywords) {
+        if (/^\d+$/.test(kw)) {
+          if (kw === chapterId) {
+            kpIds.push(kp.id);
+            break;
+          }
+        } else if (searchText.includes(kw)) {
+          kpIds.push(kp.id);
+          break;
+        }
+      }
+    }
+  }
+  return [...new Set(kpIds)];
+}
+
+function getKpIds(scope, profile) {
+  if (!profile) return getKpIdsForScope(scope);
+  return getKpIdsForScopeInIndex(scope, getProfileIndex(profile));
+}
+
+export function listChapters(profile) {
+  const index = getProfileIndex(profile);
   return Object.entries(index.chapters || {}).map(([id, ch]) => ({
     value: id,
     label: `第 ${id} 章 ${ch.title || ""}`.trim(),
@@ -38,9 +99,9 @@ export function listChapters() {
   }));
 }
 
-export function listKnowledgePoints(scope = "") {
-  const index = loadKnowledgeIndex();
-  const ids = scope ? new Set(getKpIdsForScope(scope)) : null;
+export function listKnowledgePoints(scope = "", profile) {
+  const index = getProfileIndex(profile);
+  const ids = scope ? new Set(getKpIds(scope, profile)) : null;
   const items = [];
   for (const [chapterId, chapter] of Object.entries(index.chapters || {})) {
     for (const kp of chapter.knowledge_points || []) {
@@ -55,16 +116,18 @@ export function listKnowledgePoints(scope = "") {
   return items;
 }
 
-export function resolveReviewTarget({ mode, scope, chapterId, knowledgePointId }) {
+export function resolveReviewTarget({ mode, scope, chapterId, knowledgePointId }, profile) {
   if (knowledgePointId) {
-    const kp = listKnowledgePoints().find((item) => item.value === knowledgePointId);
+    const kp = listKnowledgePoints("", profile).find((item) => item.value === knowledgePointId);
     return { scope: kp?.label || knowledgePointId, kpIds: [knowledgePointId], chapter: chapterId || "" };
   }
   if (chapterId) {
-    const sections = getChapterSections(chapterId);
+    const sections = profile?.chaptersDir
+      ? getChapterSectionsFromDir(chapterId, profile.chaptersDir)
+      : getChapterSections(chapterId);
     return {
       scope: `第${chapterId}章`,
-      kpIds: getKpIdsForScope(chapterId),
+      kpIds: getKpIds(chapterId, profile),
       chapter: chapterId,
       sections,
     };
@@ -72,14 +135,16 @@ export function resolveReviewTarget({ mode, scope, chapterId, knowledgePointId }
   const resolvedScope = scope?.trim() || "全书";
   return {
     scope: resolvedScope,
-    kpIds: getKpIdsForScope(resolvedScope),
+    kpIds: getKpIds(resolvedScope, profile),
     chapter: "",
-    sections: mode === "chapter_study" ? getChapterSections(resolvedScope) : [],
+    sections: mode === "chapter_study"
+      ? (profile?.chaptersDir ? getChapterSectionsFromDir(resolvedScope, profile.chaptersDir) : getChapterSections(resolvedScope))
+      : [],
   };
 }
 
 export function buildReviewStartPrompt(selection, config) {
-  const target = resolveReviewTarget(selection);
+  const target = resolveReviewTarget(selection, selection.profile);
   const progress = loadProgress();
   const session = progress.current_session || {};
   const difficulty = selection.difficulty || selectDifficulty({ difficulty_baseline: config.defaultDifficulty }, session);
@@ -93,5 +158,10 @@ export function buildReviewStartPrompt(selection, config) {
     difficulty,
     questionType: qType,
     courseName: config.courseName,
+    subjectPath: selection.profile?.subjectPath,
+    knowledgeIndexPath: selection.profile?.knowledgeIndexPath,
+    cardsDir: selection.profile?.cardsDir,
+    chaptersDir: selection.profile?.chaptersDir,
+    examPointsDir: selection.profile?.examPointsDir,
   });
 }

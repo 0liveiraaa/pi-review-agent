@@ -15,6 +15,7 @@ const DEFAULT_CONFIG = {
   knowledgeIndex: "workspace/data/knowledge_index.json",
   archiveDir: "workspace/archive",
   stateDir: "workspace/state",
+  profilesDir: "workspace/review_profiles",
   defaultMode: "practice",
   defaultDifficulty: "S-U",
   difficultyLadder: ["S-R", "S-U", "M-U", "M-A", "C-A"],
@@ -41,5 +42,6 @@ export function loadReviewConfig() {
     knowledgeIndexAbs: abs(config.knowledgeIndex),
     archiveDirAbs: abs(config.archiveDir),
     stateDirAbs: abs(config.stateDir),
+    profilesDirAbs: abs(config.profilesDir),
   };
 }

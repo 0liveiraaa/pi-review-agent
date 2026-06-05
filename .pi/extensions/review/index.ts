@@ -24,17 +24,29 @@ import {
 import { loadReviewConfig } from "../../../workspace/lib/review_config.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../../../workspace/lib/review_question.mjs";
 import {
+  createDraftProfile,
+  enableProfile,
+  listActiveProfiles,
+  listDraftProfiles,
+  loadProfile,
+  scanSourceFiles,
+  writeProfileFile,
+} from "../../../workspace/lib/review_profiles.mjs";
+import {
   generateQuestionId,
   initSession,
+  endSession,
   loadProgress,
   timestampNow,
   updateSession,
   writeArchiveFiles,
+  writeSummaryFile,
   updateStateFromArchive,
 } from "../../../workspace/lib/state.mjs";
 
 type ReviewSelection = {
   mode: string;
+  profile?: any;
   scope?: string;
   chapterId?: string;
   knowledgePointId?: string;
@@ -74,6 +86,26 @@ const ArchiveSchema = Type.Object({
   discussion_summary: Type.Optional(Type.Any()),
   knowledge_chain_l3: Type.Optional(Type.Array(Type.String())),
   suggestion_next: Type.Optional(Type.String()),
+});
+
+const SummarySchema = Type.Object({
+  session_id: Type.Optional(Type.String()),
+  report: Type.String(),
+  scope: Type.Optional(Type.String()),
+  total_questions: Type.Optional(Type.Number()),
+  correct: Type.Optional(Type.Number()),
+  incorrect: Type.Optional(Type.Number()),
+  end_session: Type.Optional(Type.Boolean()),
+});
+
+const ProfileWriteSchema = Type.Object({
+  subject_id: Type.String(),
+  path: Type.String(),
+  content: Type.String(),
+});
+
+const ProfileEnableSchema = Type.Object({
+  subject_id: Type.String(),
 });
 
 async function selectItem(ctx: ExtensionContext, title: string, items: SelectItem[]): Promise<string | null> {
@@ -157,6 +189,20 @@ async function textInput(ctx: ExtensionContext, title: string, initial = ""): Pr
 }
 
 async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promise<ReviewSelection | null> {
+  const profiles = listActiveProfiles();
+  if (profiles.length === 0) {
+    ctx.ui.notify("No active review profiles. Run /review-init first.", "warning");
+    return null;
+  }
+
+  const profileId = await selectItem(ctx, "选择复习科目", profiles.map((profile) => ({
+    value: profile.subjectId,
+    label: profile.name || profile.subjectId,
+    description: `${profile.subjectId} | ${profile.status}`,
+  })));
+  if (!profileId) return null;
+  const profile = loadProfile(profileId);
+
   const mode = await selectItem(ctx, "选择复习模式", REVIEW_MODES);
   if (!mode) return null;
 
@@ -167,14 +213,14 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   ]);
   if (!targetKind) return null;
 
-  const selection: ReviewSelection = { mode };
+  const selection: ReviewSelection = { mode, profile };
   if (targetKind === "chapter") {
-    selection.chapterId = await selectItem(ctx, "选择章节", listChapters()) || undefined;
+    selection.chapterId = await selectItem(ctx, "选择章节", listChapters(profile)) || undefined;
     if (!selection.chapterId) return null;
   } else if (targetKind === "knowledge") {
-    const kp = await selectItem(ctx, "选择知识点", listKnowledgePoints(args).slice(0, 200));
+    const kp = await selectItem(ctx, "选择知识点", listKnowledgePoints(args, profile).slice(0, 200));
     if (!kp) return null;
-    const item = listKnowledgePoints().find((candidate) => candidate.value === kp);
+    const item = listKnowledgePoints("", profile).find((candidate) => candidate.value === kp);
     selection.knowledgePointId = kp;
     selection.knowledgePointLabel = item?.label || kp;
   } else {
@@ -191,6 +237,61 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   ]);
   selection.questionType = type || undefined;
   return selection;
+}
+
+async function chooseDraftProfile(ctx: ExtensionContext): Promise<any | null> {
+  const drafts = listDraftProfiles();
+  if (drafts.length === 0) {
+    ctx.ui.notify("No draft review profiles. Run /review-init first.", "warning");
+    return null;
+  }
+  const id = await selectItem(ctx, "选择要修订的 draft", drafts.map((profile) => ({
+    value: profile.subjectId,
+    label: profile.name || profile.subjectId,
+    description: profile.subjectId,
+  })));
+  return id ? loadProfile(id) : null;
+}
+
+function buildInitPrompt(profile: any, sourceFiles: Array<{ path: string; size: number }>) {
+  return [
+    "请初始化一个跨科目复习资料包 draft。",
+    `subjectId: ${profile.subjectId}`,
+    `科目名称: ${profile.name}`,
+    `profile 根目录: ${profile.root}`,
+    "",
+    "只处理 Markdown / txt 源文件。请先使用 Read 工具阅读必要源文件，然后调用 review_profile_write 写入资料包文件。",
+    "",
+    "必须生成或更新这些文件:",
+    "- subject.md",
+    "- knowledge_index.json",
+    "- cards/{知识点名}.md",
+    "- chapters/{章节}/{小节}.md",
+    "- exam_points/{章节}.md",
+    "- source_map.json",
+    "- quality_report.md",
+    "",
+    "knowledge_index.json 必须包含 chapters object。profile 保持 draft，不要启用，除非用户后续明确确认。",
+    "",
+    "可用源文件:",
+    ...sourceFiles.map((file) => `- ${file.path} (${file.size} bytes)`),
+  ].join("\n");
+}
+
+function buildFixPrompt(profile: any, feedback: string) {
+  return [
+    "请修订一个跨科目复习资料包 draft。",
+    `subjectId: ${profile.subjectId}`,
+    `科目名称: ${profile.name}`,
+    `profile 根目录: ${profile.root}`,
+    "",
+    "用户反馈:",
+    feedback,
+    "",
+    "请读取 profile.json、subject.md、knowledge_index.json、source_map.json、quality_report.md 和相关资料文件。",
+    "根据反馈调用 review_profile_write 修订 draft，并重写 quality_report.md。",
+    "如果用户明确要求启用或确认可用，再调用 review_profile_enable；否则保持 draft。",
+  ].join("\n");
 }
 
 async function answerQuestion(ctx: ExtensionContext, rawQuestion: unknown): Promise<AnswerResult | null> {
@@ -229,7 +330,7 @@ async function answerQuestion(ctx: ExtensionContext, rawQuestion: unknown): Prom
 function buildArchive(params: any) {
   const q = params.question ? normalizeQuestion(params.question) : null;
   const questionId = q?.question_id || generateQuestionId();
-  const archive = {
+  return {
     question_id: questionId,
     knowledge_points: params.knowledge_points || q?.knowledge_points || [],
     difficulty: params.difficulty || q?.difficulty || "S-U",
@@ -250,7 +351,6 @@ function buildArchive(params: any) {
     knowledge_chain_l3: params.knowledge_chain_l3 || q?.related_knowledge_chain || [],
     suggestion_next: params.suggestion_next || "继续按当前范围复习。",
   };
-  return archive;
 }
 
 function createReviewAutocompleteProvider(current: AutocompleteProvider): AutocompleteProvider {
@@ -262,16 +362,17 @@ function createReviewAutocompleteProvider(current: AutocompleteProvider): Autoco
       if (!match) return current.getSuggestions(lines, cursorLine, cursorCol, options);
 
       const query = match[1] || "";
-      const chapterItems = listChapters().map((item) => ({
+      const active = listActiveProfiles()[0];
+      const chapterItems = active ? listChapters(active).map((item) => ({
         value: item.value,
         label: item.label,
         description: item.description,
-      }));
-      const kpItems = listKnowledgePoints(query).slice(0, 20).map((item) => ({
+      })) : [];
+      const kpItems = active ? listKnowledgePoints(query, active).slice(0, 20).map((item) => ({
         value: item.label,
         label: item.label,
         description: item.description,
-      }));
+      })) : [];
       return {
         items: [...chapterItems, ...kpItems].slice(0, 30),
         prefix: query,
@@ -303,14 +404,57 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const target = resolveReviewTarget(selection);
+      const target = resolveReviewTarget(selection, selection.profile);
       initSession(target.scope, target.kpIds);
       const progress = loadProgress();
       const sid = progress.current_session?.session_id || "";
-      ctx.ui.setStatus("review", ctx.ui.theme.fg("accent", `review:${config.courseName} ${sid.slice(0, 12)}`));
+      const courseName = selection.profile?.name || config.courseName;
+      ctx.ui.setStatus("review", ctx.ui.theme.fg("accent", `review:${courseName} ${sid.slice(0, 12)}`));
 
-      const prompt = buildReviewStartPrompt(selection, config);
+      const prompt = buildReviewStartPrompt(selection, { ...config, courseName });
       pi.sendUserMessage(prompt);
+    },
+  });
+
+  pi.registerCommand("review-init", {
+    description: "Create a draft review profile from Markdown/text notes",
+    handler: async (args, ctx) => {
+      if (!ctx.isIdle()) {
+        ctx.ui.notify("Agent is busy. Start init after the current turn finishes.", "warning");
+        return;
+      }
+      const sourceDir = await textInput(ctx, "输入源资料文件夹", args.trim() || "reference");
+      if (!sourceDir) return;
+      const subjectId = await textInput(ctx, "输入 subjectId（英文/数字/短横线）");
+      if (!subjectId) return;
+      const name = await textInput(ctx, "输入科目名称", subjectId);
+      if (!name) return;
+
+      const profile = createDraftProfile({ subjectId, name, sourceDir });
+      let sourceFiles: Array<{ path: string; size: number }> = [];
+      try {
+        sourceFiles = scanSourceFiles(sourceDir, 120);
+      } catch (err: any) {
+        ctx.ui.notify(err.message || String(err), "error");
+        return;
+      }
+      ctx.ui.notify(`Draft profile created: ${profile.subjectId}`, "info");
+      pi.sendUserMessage(buildInitPrompt(profile, sourceFiles));
+    },
+  });
+
+  pi.registerCommand("review-fix", {
+    description: "Revise a draft review profile with natural-language feedback",
+    handler: async (_args, ctx) => {
+      if (!ctx.isIdle()) {
+        ctx.ui.notify("Agent is busy. Start fix after the current turn finishes.", "warning");
+        return;
+      }
+      const profile = await chooseDraftProfile(ctx);
+      if (!profile) return;
+      const feedback = await textInput(ctx, "输入修订反馈（如：第2章切太碎了；确认启用）");
+      if (!feedback) return;
+      pi.sendUserMessage(buildFixPrompt(profile, feedback));
     },
   });
 
@@ -370,6 +514,87 @@ export default function reviewExtension(pi: ExtensionAPI): void {
     renderResult(result, _options, theme) {
       const details = result.details as { question_id?: string } | undefined;
       return new Text(theme.fg("success", `archived ${details?.question_id || ""}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_summary",
+    label: "Review Summary",
+    description: "Save the final review session summary report to workspace/archive/summaries.",
+    parameters: SummarySchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const progress = loadProgress();
+      const active = progress.current_session;
+      const sessionId = params.session_id || active?.session_id || `s_${Date.now()}`;
+      const path = writeSummaryFile(sessionId, params.report, {
+        scope: params.scope || active?.scope,
+        total_questions: params.total_questions ?? active?.total_questions,
+        correct: params.correct ?? active?.correct,
+        incorrect: params.incorrect ?? active?.incorrect,
+      });
+      updateSession({ last_action: "summary_saved", summary_path: path });
+      if (params.end_session && active?.session_id === sessionId) {
+        endSession();
+      }
+      return {
+        content: [{ type: "text", text: `Saved review summary: ${path}` }],
+        details: { path, session_id: sessionId },
+      };
+    },
+    renderCall(args, theme) {
+      const label = args.scope || args.session_id || "review summary";
+      return new Text(theme.fg("toolTitle", theme.bold("review_summary ")) + theme.fg("muted", label), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as { path?: string } | undefined;
+      return new Text(theme.fg("success", `summary saved ${details?.path || ""}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_profile_write",
+    label: "Review Profile Write",
+    description: "Safely write a file inside a draft review profile directory.",
+    parameters: ProfileWriteSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const profile = loadProfile(params.subject_id);
+      if (!profile) return { content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }] };
+      if (profile.status !== "draft") {
+        return { content: [{ type: "text", text: `Refusing to write non-draft profile: ${params.subject_id}` }] };
+      }
+      const path = writeProfileFile(params.subject_id, params.path, params.content);
+      return {
+        content: [{ type: "text", text: `Wrote profile file: ${path}` }],
+        details: { path, subject_id: params.subject_id },
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_profile_write ")) + theme.fg("muted", `${args.subject_id}/${args.path}`), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as { path?: string } | undefined;
+      return new Text(theme.fg("success", `profile file ${details?.path || "handled"}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_profile_enable",
+    label: "Review Profile Enable",
+    description: "Enable a reviewed draft profile so /review can use it.",
+    parameters: ProfileEnableSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const profile = enableProfile(params.subject_id);
+      return {
+        content: [{ type: "text", text: `Enabled review profile: ${profile.subjectId}` }],
+        details: { subject_id: profile.subjectId, status: profile.status },
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_profile_enable ")) + theme.fg("muted", args.subject_id), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as { subject_id?: string } | undefined;
+      return new Text(theme.fg("success", `enabled ${details?.subject_id || ""}`), 0, 0);
     },
   });
 

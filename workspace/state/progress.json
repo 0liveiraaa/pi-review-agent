@@ -1,19 +1,25 @@
 {
   "current_session": {
-    "session_id": "s_2026-06-05T15-50-09-914Z",
-    "started": "2026-06-05T15:50:09.914Z",
-    "scope": "第1章",
+    "session_id": "s_2026-06-05T16-05-06-334Z",
+    "started": "2026-06-05T16:05:06.334Z",
+    "scope": "第6章",
     "mode": "quiz",
-    "total_questions": 0,
+    "total_questions": 1,
     "correct": 0,
-    "incorrect": 0,
+    "incorrect": 1,
     "current_question_index": 0,
     "question_sequence": 0,
-    "covered_knowledge_points": [],
+    "covered_knowledge_points": [
+      "类与对象的关系",
+      "整体与部分的关系（组成关系）",
+      "对象实例化"
+    ],
     "remaining_knowledge_points": [
-      "programming-paradigms",
-      "oop-basics"
-    ]
+      "class-object",
+      "object-size"
+    ],
+    "last_lingering_question": null,
+    "last_action": "archived"
   },
   "history": {
     "total_questions_answered": 16,
