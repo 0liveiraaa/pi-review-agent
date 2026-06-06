@@ -117,6 +117,38 @@ if (profiles.length > 0) {
   fail("No review profiles found — run /review-init to create one");
 }
 
+// 6a. Demo profile release health
+const DEMO_PROFILE_PATH = join(PROFILES_DIR, "demo-review", "profile.json");
+if (existsSync(DEMO_PROFILE_PATH)) {
+  try {
+    const demo = JSON.parse(readFileSync(DEMO_PROFILE_PATH, "utf-8"));
+    if (demo.status !== "active") {
+      fail(`demo-review status is "${demo.status}" — should be "active" for release. Run npm run reset-demo-profile to fix.`);
+    }
+    if (existsSync(PROFILES_DIR)) {
+      for (const entry of readdirSync(PROFILES_DIR, { withFileTypes: true })) {
+        if (entry.isDirectory() && entry.name.startsWith("demo-review__draft_")) {
+          const draftPf = join(PROFILES_DIR, entry.name, "profile.json");
+          if (existsSync(draftPf)) {
+            try {
+              const draft = JSON.parse(readFileSync(draftPf, "utf-8"));
+              if (draft.status === "active") {
+                fail(`demo-review__draft_* is active: ${entry.name} — manual testing residue. Run npm run reset-demo-profile to fix.`);
+              } else {
+                report.push(`  ${"ℹ️"} Demo draft found (non-active): ${entry.name} [${draft.status}] — ok but consider cleanup`);
+              }
+            } catch {
+              // ignore unreadable drafts
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore unreadable demo profile
+  }
+}
+
 // 7. Package integrity
 if (existsSync(PACKAGE_PATH)) {
   const pkg = JSON.parse(readFileSync(PACKAGE_PATH, "utf-8"));

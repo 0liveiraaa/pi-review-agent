@@ -143,12 +143,14 @@ test("active profile creates revision draft and enabling archives original", () 
   try {
     createDraftProfile({ subjectId, name: "Revision Source", sourceDir: "." }, config);
     writeProfileFile(subjectId, "knowledge_index.json", JSON.stringify({ subject: "Revision", chapters: {} }, null, 2), config);
+    writeProfileFile(subjectId, "cards/kp_revision.md", "# Revision Card\n", config);
     enableProfile(subjectId, config);
 
     const draft = createRevisionDraft(subjectId, "修订卡片", config);
     assert.equal(draft.status, "draft");
     assert.equal(draft.revisionOf, subjectId);
     assert.match(draft.subjectId, /^revision-source__draft_/);
+    assert.ok(existsSync(join(config.profilesDirAbs, draft.subjectId, "cards", "kp_revision.md")));
     assert.throws(() => writeProfileFile(subjectId, "subject.md", "bad", config), /non-draft/);
     writeProfileFile(draft.subjectId, "subject.md", "# Revision Draft\n", config);
 
@@ -312,6 +314,14 @@ test("demo profile is active and supports cards, chapters, and exam points", () 
   assert.ok(listChapterMaterials(profile, "1").length >= 1);
   assert.ok(loadChapterMaterial(profile, { chapterId: "1" })?.content.includes("主动回忆"));
   assert.ok(loadExamPoints(profile, "1")?.[0]?.content.includes("考点清单"));
+});
+
+test("demo-review seed profile is always active in release state", () => {
+  const demo = loadProfile("demo-review");
+  assert.equal(demo.status, "active", "demo-review must be active for release");
+  assert.ok(!demo.supersededBy, "demo-review must not have supersededBy");
+  assert.ok(!demo.supersededAt, "demo-review must not have supersededAt");
+  assert.ok(!demo.revisionOf, "demo-review must not be a revision draft");
 });
 
 test("loads profile cards by id, name, alias, and fuzzy file matches", () => {

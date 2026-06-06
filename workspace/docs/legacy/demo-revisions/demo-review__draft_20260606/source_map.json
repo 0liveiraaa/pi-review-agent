@@ -1,0 +1,16 @@
+{
+  "subject_id": "demo-review",
+  "source_dir": "demo",
+  "mappings": {
+    "chapters/1.1-memory-practice.md": ["demo#memory"],
+    "chapters/2.1-feedback-review.md": ["demo#feedback"],
+    "cards/feedback_and_diagnosis.md": ["chapters/2.1-feedback-review.md"],
+    "cards/summary_transfer.md": ["chapters/2.1-feedback-review.md"]
+  },
+  "deprecated_cards": {
+    "feedback_loop": "merged into feedback_and_diagnosis",
+    "error_diagnosis": "merged into feedback_and_diagnosis"
+  },
+  "unmapped_sources": [],
+  "uncertain_mappings": {}
+}

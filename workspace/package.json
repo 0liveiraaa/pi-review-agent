@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "setup-review": "node scripts/setup-review.mjs",
-    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs",
+    "reset-demo-profile": "node scripts/reset-demo-profile.mjs",
+    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs && node --check scripts/reset-demo-profile.mjs",
     "test": "node --test test/review_core.test.mjs"
   },
   "dependencies": {
