@@ -31,48 +31,64 @@ if %NODE_MAJOR% lss 22 (
 echo     ✓ Node.js %NODE_VERSION% 已就绪
 echo.
 
-:: ---------- 2. 安装/更新 pi-agent ----------
-echo [2/4] 安装 pi-agent（复习助手运行平台）...
-echo     正在全局安装 @earendil-works/pi-coding-agent...
-call npm install -g @earendil-works/pi-coding-agent
-if %errorlevel% neq 0 (
-    echo !!! pi-agent 安装失败，请检查网络后重试。
-    pause
-    exit /b 1
-)
+:: ---------- 2. 检查/安装 pi-agent ----------
+echo [2/4] 检查 pi-agent（复习助手运行平台）...
 
-:: 验证 pi 命令
 where pi >nul 2>nul
-if %errorlevel% neq 0 (
-    echo !!! pi 命令未生效，请关闭本窗口后重新打开。
-    pause
-    exit /b 1
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%i in ('pi --version 2^>nul') do set PI_VER=%%i
+    if not defined PI_VER set PI_VER=已安装
+    echo     发现已有 pi-agent（%PI_VER%），跳过安装。
+    echo     如需更新，可手动运行：npm update -g @earendil-works/pi-coding-agent
+) else (
+    echo     正在安装 @earendil-works/pi-coding-agent...
+    call npm install -g @earendil-works/pi-coding-agent
+    if %errorlevel% neq 0 (
+        echo !!! pi-agent 安装失败，请检查网络后重试。
+        pause
+        exit /b 1
+    )
+    where pi >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo !!! pi 命令已安装但未生效，请关闭本窗口后重新打开。
+        pause
+        exit /b 1
+    )
+    echo     ✓ pi-agent 安装成功
 )
-echo     ✓ pi-agent 已就绪 ^(pi 命令可用^)
 echo.
 
 :: ---------- 3. 安装 workspace 依赖 ----------
 echo [3/4] 安装项目依赖（workspace）...
 cd /d "%~dp0workspace"
+if exist node_modules (
+    echo     发现已有 node_modules，执行增量更新...
+) else (
+    echo     正在安装...
+)
 call npm install
 if %errorlevel% neq 0 (
     echo !!! 依赖安装失败，请检查网络后重试。
     pause
     exit /b 1
 )
-echo     ✓ workspace 依赖已安装
+echo     ✓ workspace 依赖已就绪
 echo.
 
 :: ---------- 4. 安装根目录依赖 ----------
 echo [4/4] 安装根目录依赖...
 cd /d "%~dp0"
-call npm install
-if %errorlevel% neq 0 (
-    echo !!! 依赖安装失败，请检查网络后重试。
-    pause
-    exit /b 1
+if not exist node_modules (
+    call npm install
+    if %errorlevel% neq 0 (
+        echo !!! 依赖安装失败，请检查网络后重试。
+        pause
+        exit /b 1
+    )
+) else (
+    echo     根目录依赖已就绪，跳过。
 )
-echo     ✓ 根目录依赖已安装
+echo     ✓ 根目录依赖已就绪
 echo.
 
 :: ---------- 验证安装 ----------

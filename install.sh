@@ -29,25 +29,39 @@ fi
 echo "    ✓ Node.js $NODE_VERSION 已就绪"
 echo ""
 
-# ---------- 2. 安装 pi-agent ----------
-echo "[2/4] 安装 pi-agent（复习助手运行平台）..."
-echo "    正在全局安装 @earendil-works/pi-coding-agent..."
-npm install -g @earendil-works/pi-coding-agent
-echo "    ✓ pi-agent 已就绪"
+# ---------- 2. 检查/安装 pi-agent ----------
+echo "[2/4] 检查 pi-agent（复习助手运行平台）..."
+
+if command -v pi &>/dev/null; then
+    PI_VER=$(pi --version 2>/dev/null || echo "已安装")
+    echo "    发现已有 pi-agent（${PI_VER}），跳过安装。"
+    echo "    如需更新，可手动运行：npm update -g @earendil-works/pi-coding-agent"
+else
+    echo "    正在全局安装 @earendil-works/pi-coding-agent..."
+    npm install -g @earendil-works/pi-coding-agent
+    echo "    ✓ pi-agent 安装成功"
+fi
 echo ""
 
 # ---------- 3. 安装 workspace 依赖 ----------
 echo "[3/4] 安装项目依赖（workspace）..."
 cd "$SCRIPT_DIR/workspace"
+if [ -d node_modules ]; then
+    echo "    发现已有 node_modules，执行增量更新..."
+else
+    echo "    正在安装..."
+fi
 npm install
-echo "    ✓ workspace 依赖已安装"
+echo "    ✓ workspace 依赖已就绪"
 echo ""
 
 # ---------- 4. 安装根目录依赖 ----------
 echo "[4/4] 安装根目录依赖..."
 cd "$SCRIPT_DIR"
-npm install
-echo "    ✓ 根目录依赖已安装"
+if [ ! -d node_modules ]; then
+    npm install
+fi
+echo "    ✓ 根目录依赖已就绪"
 echo ""
 
 # ---------- 验证 ----------
