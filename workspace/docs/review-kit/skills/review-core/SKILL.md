@@ -9,7 +9,6 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 ## 运行时契约
 
 - 行动前先读取 profile 文件：`profile.json`、`subject.md`、`knowledge_index.json`，以及相关的 `cards/`、`chapters/`、`exam_points/` 或历史归档。
-- 使用 pi-agent 默认上下文管理和自动压缩。不要另造一套手工 compact 流程。
 - 不要直接写文件。资料包修改必须通过 `review_profile_write`；题目归档和会话总结必须通过 review 工具。
 - 除非用户明确确认整个资料包已经可用，否则绝不启用 draft profile。
 
@@ -17,16 +16,17 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 
 执行 `/review` 时，按以下循环推进：
 
-1. 读取用户选择的 active profile。
+1. 读取用户选择的 active profile.
 2. 读取当前范围相关的资料。
-3. 按模式先调用对应代码展示工具：`review_card`、`review_exam_points` 或 `review_chapter`。
-4. 只有展示工具返回 `action: "practice"` 后，才参考 `review-question` 生成且只生成一道结构化题目。
-5. 调用 `review_answer`，让 UI 收集用户答案。
-6. 参考 `review-grade` 判题并解释。
-7. 如果用户追问，参考 `review-discuss` 展开讨论。
-8. 当用户表示本题结束，调用 `review_archive` 归档。
-9. 归档后必须调用 `review_turn_action` 获取下一步动作。
-10. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
+3. 阅读用户档案 `workspace\archive\summaries`
+4. 按模式先调用对应代码展示工具：`review_card`、`review_exam_points` 或 `review_chapter`。
+5. 只有展示工具返回 `action: "practice"` 后，才参考 `review-question` 生成且只生成一道结构化题目。
+6. 调用 `review_answer`，让 UI 收集用户答案。
+7. 参考 `review-grade` 判题并解释。
+8. 如果用户追问，参考 `review-discuss` 展开讨论。
+9. 当用户表示本题结束，调用 `review_archive` 归档。
+10. 归档后必须调用 `review_turn_action` 获取下一步动作。
+11. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
 
 在 `review_answer` 返回用户答案之前，不要提前公布答案。
 
