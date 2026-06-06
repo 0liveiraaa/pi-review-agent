@@ -20,7 +20,7 @@
 - skills 位于 `workspace/.pi/skills/`。
 - 配置位于 `workspace/.pi/review.config.json`。
 - skill 模板位于 `workspace/docs/review-kit/skills/`。
-- `SYSTEM.md` 仍保留在 `workspace/.pi/SYSTEM.md` 作为开发参考，但 review 运行时主规则由 prompt 显式注入 `/skill:review-core`。
+- `workspace/.pi/SYSTEM.md` 已移除。运行时主规则由 `review-core` SKILL.md 通过 `injectReviewCore()` 注入每个 review 命令的 prompt，不再依赖独立的 SYSTEM.md。
 
 ---
 
@@ -53,7 +53,7 @@ npm run setup-review
 
 - workspace 根路径解析。
 - active profile 扫描。
-- 默认 C++ profile shape。
+- 默认 legacy bridge profile shape（cpp-oop）。
 - draft 写入路径限制。
 - active profile 写入拒绝。
 - 非 legacy profile 的 `..` path 拒绝。
@@ -65,7 +65,7 @@ npm run setup-review
 
 - 跨科目资料生成策略仍是占位 skill，尚未实现真实资料切分质量。
 - 当前未做 `pi install` 包分发；这是开源 v1 的有意取舍。
-- 默认 C++ profile 仍是 legacy bridge，不是新 profile 标准模板。
+- 默认 profile（cpp-oop）仍是 legacy bridge，不是新 profile 标准模板。
 - 若未来要全局安装，应另做 pi package，而不是修改 pi-agent 的全局 node_modules。
 
 ---
