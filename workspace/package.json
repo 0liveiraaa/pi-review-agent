@@ -1,14 +1,12 @@
 {
-  "name": "cpp-review-assistant",
-  "version": "2.0.0",
-  "description": "C++ 面向对象程序设计期末复习助手 — pi SDK 版本",
+  "name": "pi-review",
+  "version": "3.0.0",
+  "description": "Pi 复习助手 — AI-driven course review assistant. 启动 pi 后使用 /review 命令进行结构化复习。支持三种模式：概念卡片+练习、直接做题、章节笔记学习。",
   "type": "module",
-  "main": "review_cli.mjs",
   "scripts": {
-    "start": "node review_cli.mjs",
-    "check": "node --check review_cli.mjs && node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check scripts/setup-review.mjs",
-    "test": "node --test test/review_core.test.mjs",
-    "setup-review": "node scripts/setup-review.mjs"
+    "setup-review": "node scripts/setup-review.mjs",
+    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs",
+    "test": "node --test test/review_core.test.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.78.0",
