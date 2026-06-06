@@ -2,17 +2,25 @@
   "name": "pi-review",
   "version": "3.0.0",
   "description": "Pi 复习助手 — AI-driven course review assistant. 启动 pi 后使用 /review 命令进行结构化复习。支持三种模式：概念卡片+练习、直接做题、章节笔记学习。",
+  "keywords": ["pi-package"],
   "type": "module",
+  "pi": {
+    "extensions": ["./extensions/review"],
+    "skills": ["./skills"]
+  },
   "scripts": {
     "setup-review": "node scripts/setup-review.mjs",
     "reset-demo-profile": "node scripts/reset-demo-profile.mjs",
-    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs && node --check scripts/reset-demo-profile.mjs",
+    "check-package": "node scripts/check-package.mjs",
+    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs && node --check scripts/reset-demo-profile.mjs && node --check scripts/check-package.mjs",
     "test": "node --test test/review_core.test.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.78.0",
-    "@earendil-works/pi-tui": "0.78.0",
-    "marked": "^18.0.5",
-    "typebox": "1.1.38"
+    "marked": "^18.0.5"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   }
 }

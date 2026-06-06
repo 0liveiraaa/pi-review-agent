@@ -1,14 +1,14 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, accessSync, constants } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const workspaceRoot = resolve(import.meta.dirname, "..");
 
 // ─── Paths ───
-const EXTENSION_DIR = resolve(workspaceRoot, ".pi/extensions/review");
-const SKILLS_DIR = resolve(workspaceRoot, ".pi/skills");
+const EXTENSION_DIR = resolve(workspaceRoot, "extensions/review");
+const SKILLS_DIR = resolve(workspaceRoot, "skills");
 const LIB_DIR = resolve(workspaceRoot, "lib");
-const PROFILES_DIR = resolve(workspaceRoot, "review_profiles");
-const CONFIG_PATH = resolve(workspaceRoot, ".pi/review.config.json");
+const PROFILES_DIR = resolve(workspaceRoot, "profiles");
+const CONFIG_PATH = resolve(workspaceRoot, "review.config.json");
 const PACKAGE_PATH = resolve(workspaceRoot, "package.json");
 const EXTENSION_ENTRY = join(EXTENSION_DIR, "index.ts");
 const SOURCE_SKILLS = resolve(workspaceRoot, "docs/review-kit/skills");
@@ -94,7 +94,7 @@ if (existsSync(SKILLS_DIR)) {
   const all = readdirSync(SKILLS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory());
   for (const d of all) if (!REQUIRED_SKILLS.includes(d.name)) skillCount++;
 }
-ok(`${skillCount} skills installed in .pi/skills/`);
+ok(`${skillCount} skills installed in skills/`);
 
 // 5. Lib modules
 const REQUIRED_LIBS = [
@@ -109,18 +109,26 @@ for (const lib of REQUIRED_LIBS) {
 }
 ok(`${libCount} lib modules in lib/`);
 
-// 6. Profiles
+// 6. Profiles (scan both standard profiles/ and legacy review_profiles/)
 const profiles = [];
-if (existsSync(PROFILES_DIR)) {
-  for (const entry of readdirSync(PROFILES_DIR, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const pf = join(PROFILES_DIR, entry.name, "profile.json");
+const PROFILE_SEARCH_DIRS = [
+  PROFILES_DIR,
+  resolve(workspaceRoot, "review_profiles"),
+];
+const seenProfiles = new Set();
+for (const searchDir of PROFILE_SEARCH_DIRS) {
+  if (!existsSync(searchDir)) continue;
+  for (const entry of readdirSync(searchDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || seenProfiles.has(entry.name)) continue;
+    const pf = join(searchDir, entry.name, "profile.json");
     if (existsSync(pf)) {
       try {
         const p = JSON.parse(readFileSync(pf, "utf-8"));
         profiles.push(`${entry.name} [${p.status || "unknown"}]`);
+        seenProfiles.add(entry.name);
       } catch {
         profiles.push(`${entry.name} [broken]`);
+        seenProfiles.add(entry.name);
       }
     }
   }
@@ -132,10 +140,17 @@ if (profiles.length > 0) {
 }
 
 // 6a. Demo profile release health
-const DEMO_PROFILE_PATH = join(PROFILES_DIR, "demo-review", "profile.json");
-if (existsSync(DEMO_PROFILE_PATH)) {
+const DEMO_PROFILE_CANDIDATES = [
+  join(PROFILES_DIR, "demo-review", "profile.json"),
+  join(resolve(workspaceRoot, "review_profiles"), "demo-review", "profile.json"),
+];
+let demoProfilePath = null;
+for (const p of DEMO_PROFILE_CANDIDATES) {
+  if (existsSync(p)) { demoProfilePath = p; break; }
+}
+if (demoProfilePath) {
   try {
-    const demo = JSON.parse(readFileSync(DEMO_PROFILE_PATH, "utf-8"));
+    const demo = JSON.parse(readFileSync(demoProfilePath, "utf-8"));
     if (demo.status !== "active") {
       fail(`demo-review status is "${demo.status}" — should be "active" for release. Run npm run reset-demo-profile to fix.`);
     }
@@ -172,6 +187,25 @@ if (existsSync(PACKAGE_PATH)) {
   fail("package.json not found");
 }
 
+// 8. Data directory (user-writable, separate from package)
+let dataRoot = workspaceRoot;
+try {
+  const { DATA_ROOT } = await import("../lib/review_config.mjs");
+  dataRoot = DATA_ROOT || workspaceRoot;
+} catch {
+  // fallback to workspaceRoot
+}
+if (dataRoot !== workspaceRoot) {
+  try {
+    accessSync(dataRoot, constants.W_OK);
+    ok(`Data root: ${rel(dataRoot)} (writable)`);
+  } catch {
+    fail(`Data root not writable: ${dataRoot}`);
+  }
+} else {
+  report.push(`  ${"ℹ️"} Data root: ${rel(dataRoot)} (local dev mode — same as package root)`);
+}
+
 // ─── Summary ───
 report.push("");
 report.push("━".repeat(50));
@@ -199,7 +233,7 @@ report.push("  First demo path:");
 report.push("     /review -> 学习方法 Demo -> any mode");
 report.push("");
 report.push("  ℹ️  This is a pi-agent extension, not a standalone app.");
-report.push("     Entry point: .pi/extensions/review/index.ts");
+report.push("     Entry point: extensions/review/index.ts");
 report.push("     All review commands (/review, /review-init, /review-fix)");
 report.push("     are registered by that extension and run inside pi.");
 

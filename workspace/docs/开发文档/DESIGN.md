@@ -3,7 +3,7 @@
 > 版本: v4.0
 > 日期: 2026-06-06
 > 架构: pi-agent extension
-> 入口: `.pi/extensions/review/index.ts`
+> 入口: `extensions/review/index.ts`
 
 ---
 
@@ -16,7 +16,7 @@
                            ├── Commands: /review, /review-init, /review-fix
                            └── Tools: review_card, review_answer, review_archive, ...
                                 → lib/*.mjs (状态/卡片/profile/题目)
-                                → .pi/skills/*/SKILL.md (注入 agent prompt)
+                                → skills/*/SKILL.md (注入 agent prompt)
 ```
 
 ### 1.1 架构特点
@@ -33,7 +33,7 @@
 
 ```
 pi-agent (pi-coding-agent v0.78)
-  └── extension: .pi/extensions/review/index.ts (TypeScript, ~1000行)
+  └── extension: extensions/review/index.ts (TypeScript, ~1000行)
         ├── pi-tui (@earendil-works/pi-tui)     ← SelectList, Editor, Container
         ├── typebox                              ← 工具参数 schema 校验
         └── lib/*.mjs                            ← 业务逻辑 (8个ESM模块)
@@ -45,18 +45,17 @@ Node.js ≥22
 
 ```
 workspace/
-├── .pi/
-│   ├── extensions/review/index.ts     ← 主入口（唯一）
-│   ├── skills/                        ← 14 个 SKILL.md
-│   │   ├── review-core/               ← 主规则：运行时契约、工具路由、模式流程
-│   │   ├── review-question/           ← 出题规则（难度体系、题型模板）
-│   │   ├── review-grade/              ← 判题格式
-│   │   ├── review-discuss/            ← 讨论规则
-│   │   ├── review-summary/            ← 复盘 JSON 格式 + 会话总结模板
-│   │   ├── review-init/               ← 资料包初始化
-│   │   ├── review-fix/               ← 资料包修订
-│   │   └── review-profile-*/          ← profile 构建子技能（结构/索引/卡片/考点/质量）
-│   └── review.config.json             ← 默认课程配置
+├── extensions/review/index.ts         ← 主入口（唯一）
+├── skills/                            ← 14 个 SKILL.md
+│   ├── review-core/                   ← 主规则：运行时契约、工具路由、模式流程
+│   ├── review-question/               ← 出题规则（难度体系、题型模板）
+│   ├── review-grade/                  ← 判题格式
+│   ├── review-discuss/                ← 讨论规则
+│   ├── review-summary/                ← 复盘 JSON 格式 + 会话总结模板
+│   ├── review-init/                   ← 资料包初始化
+│   ├── review-fix/                    ← 资料包修订
+│   └── review-profile-*/              ← profile 构建子技能（结构/索引/卡片/考点/质量）
+├── review.config.json                 ← 默认课程配置
 ├── lib/                               ← 核心库（8 模块）
 │   ├── state.mjs                      ← 状态文件 I/O、归档、会话管理
 │   ├── cards.mjs                      ← 概念卡片加载（fuzzy 文件名匹配）

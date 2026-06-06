@@ -1,0 +1,15 @@
+{
+  "courseName": "Pi Review Demo",
+  "profile": "demo-review",
+  "referenceRoot": "../reference",
+  "chapterNotesDir": "../reference/01-章节笔记",
+  "conceptCardsDir": "../reference/02-概念卡片",
+  "knowledgeIndex": "data/knowledge_index.json",
+  "archiveDir": "archive",
+  "stateDir": "state",
+  "profilesDir": "review_profiles",
+  "defaultMode": "practice",
+  "defaultDifficulty": "S-U",
+  "difficultyLadder": ["S-R", "S-U", "M-U", "M-A", "C-A"],
+  "questionTypes": ["judgment", "choice", "multi_choice", "short_answer"]
+}

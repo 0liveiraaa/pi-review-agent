@@ -8,11 +8,23 @@ AI-driven course review assistant that runs as a **pi-agent extension**.
 
 ## 快速开始
 
+**本地开发体验（推荐）：**
+
 ```bash
 cd workspace
 npm install
-npm run setup-review     # 检查环境完整性
-pi                       # 启动 pi-agent
+npm run setup-review
+pi
+```
+
+**作为 pi package 安装：**
+
+```bash
+# 从本地路径安装
+pi install ./workspace
+
+# 或从 git 安装
+pi install git:github.com/user/repo
 ```
 
 进入 pi 后：
@@ -45,20 +57,21 @@ pi                       # 启动 pi-agent
 
 ```
 workspace/
-├── .pi/
-│   ├── extensions/review/index.ts     ← 入口：注册所有 review 命令和工具
-│   ├── skills/                         ← 14 个 SKILL.md（review-core, review-question, ...）
-│   └── review.config.json              ← 课程配置
-├── lib/                                ← 核心库（状态、卡片、章节、profile、题目）
-├── scripts/setup-review.mjs            ← 环境完整性检查脚本
-├── review_profiles/                    ← 复习资料包（demo-review, cpp-oop）
-│   ├── cpp-oop/                        ← C++ 面向对象程序设计 profile（active）
-│   └── demo-review/                    ← 内置新手体验 profile（active）
-├── docs/开发文档/                   ← 开发文档
-├── data/knowledge_index.json           ← 知识点索引（20章74个知识点）
-├── state/                              ← 运行时状态（.gitignore 排除）
-├── archive/                            ← 答题归档（.gitignore 排除）
-├── package.json
+├── extensions/review/index.ts         ← 入口：注册所有 review 命令和工具
+├── skills/                            ← 14 个 SKILL.md（review-core, review-question, ...）
+├── review.config.json                 ← 默认课程配置
+├── profiles/                          ← 内置只读 profile 模板（demo-review）
+│   └── demo-review/                   ← 学习方法 Demo（模板，随包发布）
+├── lib/                               ← 核心库（状态、卡片、章节、profile、题目）
+├── scripts/                           ← setup-review / check-package / reset-demo-profile
+├── review_profiles/                   ← 用户复习资料包（DATA_ROOT，.gitignore 排除）
+│   ├── cpp-oop/                       ← C++ 面向对象程序设计 profile（active）
+│   └── demo-review/                   ← 内置新手体验 profile（active，从 templates 复制）
+├── docs/开发文档/                     ← 开发文档
+├── data/knowledge_index.json          ← 知识点索引（20章74个知识点）
+├── state/                             ← 运行时状态（.gitignore 排除）
+├── archive/                           ← 答题归档（.gitignore 排除）
+├── package.json                       ← pi package manifest
 └── test/
 ```
 
@@ -77,9 +90,10 @@ draft (可编辑) → active (可复习) → archived (被替代)
 ## 开发
 
 ```bash
-npm run check           # 语法检查所有 lib 模块
-npm test                # 运行单元测试（21 tests）
-npm run setup-review    # doctor 检查
+npm run check            # 语法检查所有 lib 模块
+npm test                 # 运行单元测试（22 tests）
+npm run setup-review     # doctor 检查
+npm run check-package    # pi package 完整性检查
 ```
 
 ## 依赖

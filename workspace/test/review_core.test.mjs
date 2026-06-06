@@ -216,7 +216,7 @@ test("review prompts force the core skill and command prompts mention init and f
   const chapterPrompt = buildReviewStartPrompt({ mode: "chapter_study", chapterId: "1", profile }, loadReviewConfig());
   assert.match(chapterPrompt, /review_chapter/);
 
-  const extensionSource = readFileSync(join(WORKSPACE_ROOT, ".pi/extensions/review/index.ts"), "utf-8");
+  const extensionSource = readFileSync(join(WORKSPACE_ROOT, "extensions/review/index.ts"), "utf-8");
   assert.match(extensionSource, /\/skill:review-core/);
   assert.match(extensionSource, /\/skill:review-init/);
   assert.match(extensionSource, /\/skill:review-fix/);
