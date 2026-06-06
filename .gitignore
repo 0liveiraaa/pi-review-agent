@@ -23,6 +23,9 @@ Desktop.ini
 *.swp
 *.swo
 
+# ── Claude Code workspace ──
+.claude/
+
 # ── IDE ──
 .vscode/
 .idea/
