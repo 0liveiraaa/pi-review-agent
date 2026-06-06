@@ -1,3 +1,11 @@
+> **📌 复核已办结**（2026-06-06）
+> 本文档之后的清理工作已在同日完成，包括：
+> - node_modules/ 和运行产物从 git 跟踪移除
+> - package.json 更名为 pi-review@3.0.0
+> - 旧 CLI 归档至 docs/legacy/
+> - 文档重写（DESIGN v4.0、README、profile/card schema）
+> - 各项变更均已通过 git status 和 npm run check 验证
+
 # Review 开源本地化实现复核报告
 
 审查日期：2026-06-06  

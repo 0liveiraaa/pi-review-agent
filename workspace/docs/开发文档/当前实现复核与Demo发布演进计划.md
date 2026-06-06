@@ -1,3 +1,11 @@
+> **✅ 复核已办结**（2026-06-06）
+> 本文档列出的阻塞项已在同日处理完成：
+> - node_modules/ 已从 git 跟踪移除 + .gitignore
+> - package.json 已更名为 pi-review@3.0.0，移除旧入口
+> - review_cli.mjs / review_cli.py / lib/session.mjs / lib/terminal.mjs 已归档至 docs/legacy/
+> - 所有开发文档已重写或标注 legacy
+> - DESIGN.md 已更新至 v4.0
+
 # 当前实现复核与 Demo 发布演进计划
 
 日期：2026-06-06

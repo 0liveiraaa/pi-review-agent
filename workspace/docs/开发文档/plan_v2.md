@@ -1,3 +1,14 @@
+> **✅ 已完成**（2026-06-06）
+> 本文档对应的工作已全部完成：
+> - profile 修订闭环（draft→active→archived）
+> - 三种模式产品化（代码工具+agent 生成内容）
+> - demo profile（demo-review）
+> - 卡片系统升级（cards.mjs + card_progress.json）
+> - 旧 CLI 清理归档
+> - 文档重写（DESIGN v4.0, README, schema 文档）
+>
+> 当前状态与本文档描述一致，细节见 `docs/开发文档/DESIGN.md`。
+
 # Review 下一阶段产品化计划：资料包修订闭环、模式 2/3、示例 Profile、卡片系统
 
 ## Summary

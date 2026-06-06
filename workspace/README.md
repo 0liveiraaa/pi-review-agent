@@ -1,33 +1,89 @@
 # Pi 复习助手
 
-这是项目本地的 pi-agent 复习助手，需要在 `workspace/` 目录下运行。
+AI-driven course review assistant that runs as a **pi-agent extension**.
+
+在 pi-agent TUI 中通过 `/review`、`/review-init`、`/review-fix` 命令进行结构化复习。支持三种模式：概念卡片+练习、直接做题、章节笔记学习。
+
+---
 
 ## 快速开始
 
-```powershell
+```bash
+cd workspace
 npm install
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent  # 如果尚未安装 pi
-npm run setup-review
-pi
+npm run setup-review     # 检查环境完整性
+pi                       # 启动 pi-agent
 ```
 
-然后使用：
+进入 pi 后：
 
-- `/review` 选择 active 科目并开始复习。首次体验可以选择内置的 `学习方法 Demo`。
-- `/review-init` 从 Markdown 或文本笔记创建 draft 科目资料包。
-- `/review-fix` 用自然语言反馈修订资料包。修订 active 资料包时会先创建 draft 修订版，确认后再启用。
-
-推荐首次体验：
-
-```text
-/review
-选择: 学习方法 Demo
-任选模式 1/2/3
-完成一题后在题后菜单选择下一步
+```
+/review                  # 选择一个 active profile 开始复习
 ```
 
-## 项目本地设计
+首次体验推荐选择 `学习方法 Demo` profile，三种模式都可以尝试。
 
-扩展、技能和配置文件均位于 `workspace/.pi/` 目录下。本项目不会修改 pi-agent 的全局安装，也不会在安装过程中写入 `~/.pi/agent`。
+## 其他命令
 
-`SYSTEM.md` 仅作为开发参考保留。运行时复习行为由 `/review` 命令通过 `review-core` 和任务特定技能注入。
+| 命令 | 用途 |
+|------|------|
+| `/review` | 选择 profile → 模式 → 范围 → 开始复习 |
+| `/review-init` | 从 Markdown/txt 笔记创建 draft 复习资料包 |
+| `/review-fix` | 修订资料包 draft，或从 active profile 创建修订草稿 |
+
+## 复习模式
+
+| 模式 | 流程 |
+|------|------|
+| 概念卡片 + 练习 | `review_card` 展示卡片 → 生成题目 → `review_answer` → 判题 → `review_archive` |
+| 直接练习 | `review_exam_points` 展示考点 → 生成题目 → 判题 → 归档 |
+| 章节笔记学习 | `review_chapter` 展示小节 → 生成题目 → 判题 → 归档 |
+
+三种模式统一使用 `review_turn_action` 题后菜单（下一题/提示/追问/提高难度/总结/退出）。
+
+## 项目结构
+
+```
+workspace/
+├── .pi/
+│   ├── extensions/review/index.ts     ← 入口：注册所有 review 命令和工具
+│   ├── skills/                         ← 14 个 SKILL.md（review-core, review-question, ...）
+│   └── review.config.json              ← 课程配置
+├── lib/                                ← 核心库（状态、卡片、章节、profile、题目）
+├── scripts/setup-review.mjs            ← 环境完整性检查脚本
+├── review_profiles/                    ← 复习资料包（demo-review, cpp-oop）
+│   ├── cpp-oop/                        ← C++ 面向对象程序设计 profile（active）
+│   └── demo-review/                    ← 内置新手体验 profile（active）
+├── docs/开发文档/                   ← 开发文档
+├── data/knowledge_index.json           ← 知识点索引（20章74个知识点）
+├── state/                              ← 运行时状态（.gitignore 排除）
+├── archive/                            ← 答题归档（.gitignore 排除）
+├── package.json
+└── test/
+```
+
+## Profile 生命周期
+
+```
+draft (可编辑) → active (可复习) → archived (被替代)
+```
+
+- `draft` — 通过 `/review-init` 创建或 `/review-fix` 修订
+- `active` — 通过 `review_profile_enable` 启用后可使用 `/review`
+- `archived` — active profile 被修订版替代后自动标记
+
+修订 active profile 时自动创建 `{profile}__draft_{date}` 副本，确认启用后再替换，原 active 标记为 archived 以支持回滚。
+
+## 开发
+
+```bash
+npm run check           # 语法检查所有 lib 模块
+npm test                # 运行单元测试（21 tests）
+npm run setup-review    # doctor 检查
+```
+
+## 依赖
+
+- Node.js >= 22
+- pi-agent（`npm install -g @earendil-works/pi-coding-agent`）
+- 一个可用的 LLM API key（在 pi 中配置）

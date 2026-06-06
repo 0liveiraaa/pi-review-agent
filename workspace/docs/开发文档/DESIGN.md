@@ -1,338 +1,314 @@
 # 期末复习助手 — 项目设计文档
 
-> 版本: v3.0
-> 日期: 2026-06-05
-> 课程: 面向对象程序设计 (C++)
-> 状态: SDK 版本完成，交互细化完成
+> 版本: v4.0
+> 日期: 2026-06-06
+> 架构: pi-agent extension
+> 入口: `.pi/extensions/review/index.ts`
 
 ---
 
-## 1. 项目概述
+## 1. 架构概述
 
-### 1.1 目标
+本复习助手以 **pi-agent extension** 形态运行，所有交互在 pi-agent TUI 中完成。
 
-构建一个 AI 驱动的期末复习助手，运行在 Pi Coding Agent SDK 上，以知识点卡片 + 题目考察 + 深度讨论 + 复盘驱动的方式辅助复习。支持三种复习模式。
+```
+用户 → pi-agent TUI → review extension (index.ts)
+                           ├── Commands: /review, /review-init, /review-fix
+                           └── Tools: review_card, review_answer, review_archive, ...
+                                → lib/*.mjs (状态/卡片/profile/题目)
+                                → .pi/skills/*/SKILL.md (注入 agent prompt)
+```
 
-### 1.2 核心设计原则
+### 1.1 架构特点
 
-| 原则 | 说明 |
+| 特点 | 说明 |
 |------|------|
-| **复盘驱动** | 每题结束后 agent 生成结构化复盘 JSON，对话细节被 compact 压缩，只保留复盘记录在上下文中 |
-| **Agent 自主阅读** | agent 使用 Read 工具主动查阅 reference/ 下的小节笔记和概念卡片 |
-| **一次性加载，KV cache 复用** | 全部 4 个 skill 在 session 启动时一次性注入 system prompt，compact 保护不被压缩 |
-| **先本地后远程** | 卡片优先代码直读 MD，复盘由程序统一保存 |
+| **Extension 驱动** | 所有命令和工具通过 `pi.registerCommand()` / `pi.registerTool()` 注册 |
+| **代码渲染 UI** | 卡片、章节、考点、题后菜单由代码工具渲染，agent 只负责生成题目内容和判题 |
+| **Profile 生命周期** | `draft → active → archived`，修订 active 时自动创建 draft 副本 |
+| **Skill 注入** | `review-core` 主规则强制注入每个 prompt，子技能按阶段参考 |
+| **Typebox 校验** | 所有工具参数用 `Type.Object()` 做运行时 JSON schema 校验 |
 
-### 1.3 技术栈
-
-```
-Node.js (ESM, 零外部依赖除 pi SDK)
-  ├── review_cli.mjs           # 主入口 (~420行)
-  └── lib/
-      ├── session.mjs           # pi SDK AgentSession 封装
-      ├── state.mjs             # JSON 状态文件读写
-      ├── cards.mjs             # 概念卡片加载 (reference/02-概念卡片/)
-      ├── chapters.mjs          # 章节笔记解析 (reference/01-章节笔记/)
-      └── terminal.mjs          # 终端可视化 (Markdown 渲染 + 选项打印)
-
-Pi Coding Agent SDK (@earendil-works/pi-coding-agent v0.78)
-  ├── createAgentSession()      # 持久会话 (一次创建，全程复用)
-  ├── ModelRegistry             # 模型管理 (deepseek/deepseek-v4-flash)
-  ├── DefaultResourceLoader     # 系统提示 + Skill 加载
-  └── 工具: read, bash         # 文件阅读 + 目录列举
-
-marked                         # Markdown → ANSI 终端渲染
-```
-
-### 1.4 项目结构
+### 1.2 技术栈
 
 ```
-面向对象程序设计/
+pi-agent (pi-coding-agent v0.78)
+  └── extension: .pi/extensions/review/index.ts (TypeScript, ~1000行)
+        ├── pi-tui (@earendil-works/pi-tui)     ← SelectList, Editor, Container
+        ├── typebox                              ← 工具参数 schema 校验
+        └── lib/*.mjs                            ← 业务逻辑 (8个ESM模块)
+
+Node.js ≥22
+```
+
+### 1.3 项目结构
+
+```
+workspace/
 ├── .pi/
-│   ├── SYSTEM.md                          # 系统提示 (agent 角色 + 行为 + 技能列表 + reference 结构)
-│   └── skills/                            # 4 个独立技能 (一次性全部加载)
-│       ├── review-question/SKILL.md        # 难度体系 + 题型模板
-│       ├── review-grade/SKILL.md           # 判题格式 + L1-L3 解析
-│       ├── review-discuss/SKILL.md         # L2 讨论 + 代码示例风格
-│       └── review-summary/SKILL.md         # 每题复盘格式 + 会话总结模板
-├── reference/                             # 课程资料 (agent 通过 Read 工具访问)
-│   ├── 00-课程总览.md
-│   ├── 01-章节笔记/{6.5,6.6,6.7,6.8}/   # 按学期分组的小节笔记
-│   ├── 02-概念卡片/                       # 500 个概念卡片 MD
-│   ├── 04-考点整理/{6.5,6.6,6.7}/        # 考点速记
-│   └── 历年考试题/
-└── workspace/
-    ├── DESIGN.md                          # 本文件
-    ├── package.json                       # ESM + npm 依赖
-    ├── review_cli.mjs                     # 主入口 (~420行)
-    ├── review_cli.py                      # Python 版本 (保留参考, 不再使用)
-    ├── lib/
-    │   ├── session.mjs                    # pi SDK 会话封装 (~100行)
-    │   ├── state.mjs                      # 状态管理 (~280行)
-    │   ├── cards.mjs                      # 概念卡片加载 (~35行)
-    │   ├── chapters.mjs                   # 章节笔记解析 (~70行)
-    │   └── terminal.mjs                   # 终端可视化 (~250行)
-    ├── state/
-    │   ├── progress.json                  # 复习进度
-    │   ├── wrong_book.json                # 错题本
-    │   └── knowledge_chains.json          # 知识链索引
-    ├── archive/
-    │   ├── sessions/{session_id}/         # 每 session 的题目归档
-    │   │   ├── q_*.json                   # 结构化复盘
-    │   │   └── q_*.md                     # 可读 MD
-    │   └── summaries/                    # session 总结报告
-    │       └── {session_id}_总结.md
-    ├── data/
-    │   └── knowledge_index.json           # 20章74个知识点索引
-    └── schemas/                           # JSON Schema (设计参考)
+│   ├── extensions/review/index.ts     ← 主入口（唯一）
+│   ├── skills/                        ← 14 个 SKILL.md
+│   │   ├── review-core/               ← 主规则：运行时契约、工具路由、模式流程
+│   │   ├── review-question/           ← 出题规则（难度体系、题型模板）
+│   │   ├── review-grade/              ← 判题格式
+│   │   ├── review-discuss/            ← 讨论规则
+│   │   ├── review-summary/            ← 复盘 JSON 格式 + 会话总结模板
+│   │   ├── review-init/               ← 资料包初始化
+│   │   ├── review-fix/               ← 资料包修订
+│   │   └── review-profile-*/          ← profile 构建子技能（结构/索引/卡片/考点/质量）
+│   └── review.config.json             ← 默认课程配置
+├── lib/                               ← 核心库（8 模块）
+│   ├── state.mjs                      ← 状态文件 I/O、归档、会话管理
+│   ├── cards.mjs                      ← 概念卡片加载（fuzzy 文件名匹配）
+│   ├── chapters.mjs                   ← 章节笔记扫描（YAML frontmatter 解析）
+│   ├── review_config.mjs              ← 配置加载与路径解析
+│   ├── review_engine.mjs              ← 复习目标解析、prompt 构建
+│   ├── review_question.mjs            ← 题目规范化、多选题答案解析
+│   ├── review_profiles.mjs            ← Profile CRUD（创建/加载/写入/启用/修订）
+│   └── review_materials.mjs           ← 章节材料和考点总结加载
+├── review_profiles/                   ← 复习资料包
+│   ├── cpp-oop/                       ← C++ 面向对象程序设计（active）
+│   └── demo-review/                   ← 学习方法 Demo（active，新手体验用）
+├── scripts/setup-review.mjs           ← 环境完整性 doctor
+├── test/review_core.test.mjs          ← 单元测试（21 tests）
+├── data/knowledge_index.json          ← 知识点索引
+├── state/                             ← 运行时状态（gitignored）
+├── archive/                           ← 答题归档（gitignored）
+└── docs/开发文档/                  ← 开发文档
+    ├── DESIGN.md                      ← 本文件
+    ├── profile_schema.md              ← Profile 结构规范
+    ├── card_schema.md                 ← 概念卡片结构规范
+    ├── SYSTEM.reference.md            ← 旧版 SYSTEM.md（历史参考）
+    └── review.md                      ← 开源本地化复核报告
 ```
 
 ---
 
-## 2. 交互流程
+## 2. Extension 入口
 
-### 2.1 先模式后范围
+### 2.1 注册的命令
 
-```
-启动
-  ↓
-模式选择 (1/2/3)
-  ├─ 1,2 → 输入复习范围 → 匹配知识点 → 复盘驱动循环
-  └─ 3   → 输入章节号 → 列小节 → 复盘驱动循环
-```
-
-### 2.2 三种复习模式
-
-| 模式 | 流程 | 特点 |
+| 命令 | 触发 | 流程 |
 |------|------|------|
-| 1. 卡片→做题 | 知识卡片 → 做题 → 判题 → 讨论 → 复盘 | 先复习再考察 |
-| 2. 直接做题 (默认) | 出题 → 判题 → 讨论 → 复盘 | 快速刷题 |
-| 3. 单元学习 | agent Read小节 → 简述 → 题后选项(更难/继续/下一) → 复盘 | 结构化推进 |
+| `/review` | 用户输入 | TUI 选择 profile → 模式 → 范围 → 题型 → 发送 prompt 给 agent |
+| `/review-init` | 用户输入 | 输入源目录和科目名 → 创建 draft profile → 发送 init prompt 给 agent |
+| `/review-fix` | 用户输入 | 选择 profile → 输入反馈 → active 则先创建 revision draft → 发送 fix prompt 给 agent |
 
-### 2.3 结构化指令
+所有命令 prompt 都通过 `injectReviewCore()` 强制注入 `review-core` 主规则。
 
-| 指令 | 别名 | 功能 |
-|------|------|------|
-| `下一题` | `n` | 归档 + 复盘 → 下一题 |
-| `跳过` | `skip` | 跳过当前卡片/题目 |
-| `提示` | `hint` | 引导性提示（不直接给答案） |
-| `更难` | `harder`, `加难度` | 提升下一题一个难度级别 |
-| `总结` | `sum` | 结束会话 → 生成 meta-复盘 |
-| `退出` | `q` | 中断会话 |
+### 2.2 注册的工具
 
-### 2.4 复盘驱动的题目生命周期
+| 工具 | agent 角色中调用 | 职责 |
+|------|-----------------|------|
+| `review_card` | 模式 1 出题前 | 在 TUI 中渲染知识点卡片，返回 `practice/next_card/skip/exit` |
+| `review_exam_points` | 模式 2 出题前 | 渲染章节考点总结，返回 `practice/skip/exit` |
+| `review_chapter` | 模式 3 出题前 | 渲染章节或小节材料，返回 `practice/next_section/skip/exit` |
+| `review_answer` | 出题后 | 渲染结构化题目并收集用户答案 |
+| `review_archive` | 判题+讨论后 | 归档题目答案，更新进度/错题本/知识链 |
+| `review_turn_action` | 归档后**必须**调用 | 显示统一题后菜单（下一题/看卡片/看章节/提示/追问/提高难度/总结/退出） |
+| `review_summary` | 用户要求总结时 | 保存 session 总结报告 |
+| `review_profile_write` | 初始化/修订时 | 安全写入 draft profile 文件（拒绝非 draft） |
+| `review_profile_enable` | 用户确认启用时 | 将 draft 切换为 active（替换 active 时归档原版） |
 
-```
-┌─────────────────────────────────────────┐
-│  一次题目生命周期 (同一 AgentSession 内)   │
-│                                         │
-│  1. agent 生成题目 (或 Read 小节后生成)    │
-│  2. 用户作答 (选择: 编号输入 / 自由文本)    │
-│  3. agent 判题 + L1 解析                 │
-│  4. [可选] 讨论 (L2)                     │
-│  5. saveQuestion() → 复盘 JSON + 归档    │
-│  6. compact() → 对话细节丢弃, 复盘保留    │
-│                                         │
-│  题后选项 (Mode 3):                      │
-│    1. 更难 → 同小节生成 M-U 题            │
-│    2. 继续提问 → 自由追问                 │
-│    3. 下一小节 (默认)                     │
-└─────────────────────────────────────────┘
-```
+### 2.3 工具契约
 
-### 2.5 上下文演变
+每个工具都有 typebox schema 校验，agent 必须传入结构化参数。关键契约：
 
 ```
-初始: [4个skill全文, SYSTEM.md, reference目录结构, 章节小节列表]
-题1后: [4个skill, SYSTEM.md, ref结构, 章节信息, 复盘₁]    ← 对话细节已丢弃
-题2后: [4个skill, SYSTEM.md, ref结构, 章节信息, 复盘₁, 复盘₂]
-...
-退出: agent 基于全部复盘记录生成 meta-复盘 → summaries/
+review_answer 需要的题目 JSON:
+  { type, question_text, options?, correct_answer, knowledge_points, difficulty, explanation_l1, source_basis }
+
+review_archive 需要的归档数据:
+  { user_answer, is_correct, grading?, discussion_summary?, knowledge_chain_l3?, ... }
+
+review_card 返回:
+  { action: "practice" | "next_card" | "skip" | "exit", knowledge_point_id, card_found }
+
+review_turn_action 返回:
+  { action: "next_question" | "show_card" | "show_chapter" | "hint" | "discuss" | "increase_difficulty" | "summary" | "exit" }
 ```
 
 ---
 
-## 3. 题目体系
+## 3. 复习模式与流程
 
-### 3.1 题型
+### 3.1 三种模式
 
-| 题型 | 代码 | 适用难度 | 特点 |
-|------|------|----------|------|
-| 正误判断 | judgment | S-R, S-U | 一句陈述，判断正误 |
-| 单项选择 | choice | S-U, M-U, M-A | 4 选项，支持多选输入 (如 BD) |
-| 简述题 | short_answer | M-A, C-A | 开放式问题，按要点给分 |
+| 模式 | ID | 前置代码工具 | 流程 |
+|------|-----|-------------|------|
+| 概念卡片+练习 | `card_practice` | `review_card` | 卡片展示 → 生成题目 → `review_answer` → 判题 → 讨论 → `review_archive` → `review_turn_action` |
+| 直接练习 | `practice` | `review_exam_points`（有章节时） | 考点展示 → 出题 → 判题 → 归档 → 题后菜单 |
+| 章节笔记学习 | `chapter_study` | `review_chapter` | 材料展示 → 出题 → 判题 → 归档 → 题后菜单 |
 
-### 3.2 难度矩阵 (5 级)
+### 3.2 单题生命周期 (agent 视角)
 
-| 级别 | 广度 × 认知 | 含义 | 适用题型 |
-|------|-------------|------|----------|
-| **S-R** | Single × Recall | 单一知识点，记忆/识别 | 判断 |
-| **S-U** | Single × Understand | 单一知识点，理解/区分 | 判断、选择 |
-| **M-U** | Multi × Understand | 2-3个关联概念，理解比较 | 选择 |
-| **M-A** | Multi × Analyze | 多概念综合推理 | 选择、简述 |
-| **C-A** | Chain × Analyze | 知识链条综合 | 简述 |
+```
+1. Read profile 资料 (subject.md, knowledge_index.json)
+2. 按模式调用前置代码工具 (review_card / review_exam_points / review_chapter)
+3. 返回 practice → 参考 review-question 生成一题结构化 JSON
+4. 调用 review_answer → TUI 渲染 → 用户作答
+5. 参考 review-grade 判题 + L1 解析
+6. 可选讨论 (参考 review-discuss)
+7. 调用 review_archive 归档
+8. 调用 review_turn_action 获取下一步
+9. 循环或退出
+```
 
-### 3.3 难度自适应
+### 3.3 上下文管理
 
-- **自动**: 正确率 ≥80% 升级，<50% 降级
-- **手动**: 用户输入 `更难` 或题后选择「挑战更难的题」
-- **基线**: 每个知识点有 `difficulty_baseline`
+上下文由 pi-agent 自动管理（auto-compact）。extension 不做手动 compact 调用。初始 prompt 通过 `review-core` 主规则注入运行时契约。
 
 ---
 
-## 4. 解析深度 (Level 1-3)
+## 4. Profile 系统
 
-| Level | 触发时机 | 内容 |
-|-------|----------|------|
-| L1 | 判题后立即展示 | 正确答案 + 直接解释 |
-| L2 | 讨论中自然展开 | 关联知识点、代码示例、概念对比 |
-| L3 | 复盘时整理 | 知识链条: 知识点1 → 知识点2 → 知识点3 |
-
----
-
-## 5. 数据设计
-
-### 5.1 知识点索引 (`data/knowledge_index.json`)
-
-覆盖全部 20 章，74 个知识点。每个知识点:
-- `id`, `name`, `chapter`, `exam_level`
-- `question_types`, `difficulty_baseline`
-- `related`, `common_misconceptions`, `generation_hints`
-
-### 5.2 状态文件 (与 Python 版本 schema 兼容)
-
-**progress.json** — 当前 session + 历史汇总
-**wrong_book.json** — 错题记录 + 错误类型统计
-**knowledge_chains.json** — 跨知识点关联
-
-### 5.3 归档结构
+### 4.1 生命周期
 
 ```
-archive/
-├── sessions/
-│   └── {session_id}/
-│       ├── q_20260605_001.json    # 结构化归档 (含复盘 _fupan 字段)
-│       └── q_20260605_001.md      # 可读 MD
-└── summaries/
-    └── {session_id}_总结.md       # session meta-复盘
+draft ──(review_profile_enable)──→ active ──(被修订版替代)──→ archived
+                                      │
+                                      └──(/review-fix)──→ {id}__draft_{date} (draft)
 ```
 
-### 5.4 复盘 JSON 格式 (每题)
+- `draft` — 可编辑，`/review` 不显示
+- `active` — 不可编辑，`/review` 可选
+- `archived` — 历史版本，保留在磁盘用于回滚
+
+### 4.2 Profile 目录结构
+
+```
+review_profiles/{subject_id}/
+├── profile.json              ← subjectId, name, status, paths, revision metadata
+├── subject.md                ← 科目描述和考试目标
+├── knowledge_index.json      ← { chapters: { "1": { title, knowledge_points: [...] } } }
+├── cards/                    ← 知识点卡片 *.md
+├── chapters/                 ← 章节笔记 *.md
+├── exam_points/              ← 考点总结 *.md
+├── source_map.json           ← 源文件映射
+└── quality_report.md         ← 质量评估报告
+```
+
+### 4.3 知识索引结构
 
 ```json
 {
-  "section": "11.1 存储空间",
-  "question_summary": "题目的一句话概括",
-  "user_answer": "错误",
-  "is_correct": true,
-  "core_learning": "本题的核心知识点/收获",
-  "weak_point": null,
-  "error_root_cause": null,
-  "knowledge_chain": ["知识点1", "知识点2", "知识点3"]
+  "chapters": {
+    "1": {
+      "title": "章节标题",
+      "knowledge_points": [
+        {
+          "id": "kp_stable_id",
+          "name": "知识点名称",
+          "aliases": ["别名"],
+          "tags": ["tag"],
+          "question_types": ["choice", "judgment", "short_answer"],
+          "difficulty_baseline": "S-U",
+          "related": ["kp_other"],
+          "common_misconceptions": ["常见误区"],
+          "generation_hints": "出题提示"
+        }
+      ]
+    }
+  }
 }
 ```
 
 ---
 
-## 6. 上下文策略
+## 5. 题目体系
 
-### 6.1 初始上下文 (一次性注入)
+### 5.1 题型
 
-- `.pi/SYSTEM.md` (角色 + 行为 + reference 目录结构)
-- 全部 4 个 skill 的完整内容
-- 当前章节/范围 + 小节文件路径列表
+| 题型 | 代码 | 适用难度 |
+|------|------|----------|
+| 正误判断 | judgment | S-R, S-U |
+| 单项选择 | choice | S-U, M-U, M-A |
+| 多项选择 | multi_choice | M-U, M-A |
+| 简述题 | short_answer | M-A, C-A |
 
-### 6.2 compact 策略
+### 5.2 难度矩阵 (5 级)
 
-```
-compact 指令: "丢弃本题的详细判题和讨论文本。
-保留: 技能文档(review-question/grades/discuss/summary)、
-参考资料目录结构、章节信息、所有复盘记录。
-将本题对话压缩为一条复盘记录。"
-```
+| 级别 | 广度 × 认知 | 含义 |
+|------|-------------|------|
+| S-R | Single × Recall | 单一知识点记忆/识别 |
+| S-U | Single × Understand | 单一知识点理解/区分 |
+| M-U | Multi × Understand | 2-3 关联概念比较 |
+| M-A | Multi × Analyze | 多概念综合推理 |
+| C-A | Chain × Analyze | 知识链条综合 |
 
-- skill 内容永不压缩 (KV cache 复用)
-- 只压缩对话细节 → 复盘记录
-- 上下文线性增长 (每条复盘 ~200 字节)
+### 5.3 难度自适应
 
-### 6.3 统一归档函数 `saveQuestion()`
-
-```javascript
-saveQuestion(questionText, userAnswer, grading, meta, sessionId)
-  ├── prompt("生成复盘 JSON")
-  ├── parseFupan()
-  ├── 构建 archive (统一结构)
-  ├── writeArchiveFiles()  → sessions/{sid}/q_xxx.json + .md
-  ├── updateStateFromArchive()
-  └── return fupan
-```
-
-所有出题路径 (普通/更难/继续) 共用此函数。
+- 自动: 正确率 ≥80% 升级，<50% 降级
+- 手动: 题后菜单选择「提高难度」或 agent 调用 `review_turn_action: increase_difficulty`
+- 基线: 每个知识点有 `difficulty_baseline`
 
 ---
 
-## 7. 可视化
+## 6. 数据设计
 
-### 7.1 Markdown 渲染 (terminal.mjs)
+### 6.1 状态文件 (state/)
 
-使用 `marked` 解析 + 自定义 ANSI 主题:
-- 标题: 粗体青色
-- 代码块: 带边框 + C++ 关键词高亮
-- 内联代码: 黄色
-- 引用: 暗色 + 竖线边框
-- 粗体/斜体: ANSI 样式
+| 文件 | 内容 |
+|------|------|
+| `progress.json` | 当前 session + 历史汇总 |
+| `wrong_book.json` | 错题记录 + 错误类型统计 |
+| `knowledge_chains.json` | 跨知识点关联 |
+| `card_progress.json` | 卡片 seen/practice/correct 统计 |
 
-### 7.2 选项打印
+### 6.2 归档结构 (archive/)
 
-选择题时打印彩色选项编号 (A/B/C/D)，用户键盘输入字母。支持多选: `BD` / `B D` / `B,D` / `B和D`。
+```
+archive/
+├── sessions/{session_id}/
+│   ├── q_20260605_001.json    # 结构化归档
+│   └── q_20260605_001.md      # 可读 MD
+└── summaries/
+    └── {session_id}_总结.md   # session meta-复盘
+```
 
----
+### 6.3 知识点索引 (data/knowledge_index.json)
 
-## 8. 设计决策记录
-
-| # | 决策 | 选择 | 理由 |
-|---|------|------|------|
-| 1 | 单门课 vs 通用框架 | 单门课 | 期末需求紧迫 |
-| 2 | 运行方式 | pi SDK (AgentSession) | 持久上下文，无子进程开销 |
-| 3 | 语言 | Node.js (ESM) | pi SDK 为 JS 原生 |
-| 4 | Skill 组织 | 拆分 4 个，一次性加载 | 方便维护，KV cache 复用 |
-| 5 | 上下文管理 | 复盘驱动 + compact 保护 | 上下文永不膨胀 |
-| 6 | 题目来源 | Agent 自主 Read + LLM 生成 | 基于真实小节内容，不靠训练数据猜 |
-| 7 | 难度体系 | S/M/C × R/U/A = 5级 | 广度×认知，适配考试 |
-| 8 | 节奏控制 | 用户驱动 + 题后选项 | 灵活度与推进速度兼顾 |
-| 9 | 交互顺序 | 先模式后范围 | Mode 3 不需要范围输入 |
-| 10 | 模型选择 | deepseek-v4-flash | 速度快，成本低 |
-| 11 | 卡片策略 | 代码直读 MD → LLM 兜底 | 优先本地 |
-| 12 | 归档策略 | 统一 saveQuestion() | 所有出题路径结构一致 |
-| 13 | 工具策略 | read + bash | 文件阅读 + 目录列举 |
-| 14 | 终端渲染 | marked + ANSI 主题 | 代码高亮 + Markdown 美化 |
-| 15 | 多选题 | 多字母输入 (BD/B和D) | 适配多正确选项的题目 |
+覆盖 20 章 74 个知识点。每个知识点含 id、name、aliases、tags、question_types、difficulty_baseline、related、common_misconceptions、generation_hints。
 
 ---
 
-## 9. 实现状态
+## 7. Skill 体系
 
-### 已完成
+14 个 skill 按角色分类：
 
-- [x] pi SDK 架构 (AgentSession 持久上下文)
-- [x] 三种复习模式 (卡片→做题 / 直接做题 / 单元学习)
-- [x] 三种题型 (判断 / 选择 / 简述) + 5 级难度体系
-- [x] 4 个独立 Skill (一次性加载，compact 保护)
-- [x] 复盘驱动上下文管理 (compact 丢弃对话，保留复盘)
-- [x] 先模式后范围的交互流程
-- [x] Agent 自主 Read 小节内容 (真实内容出题)
-- [x] 统一 saveQuestion() 归档函数
-- [x] 题后选项菜单 (更难 / 继续提问 / 下一小节)
-- [x] 卡片 skip 防死循环 + 多选题多字母输入
-- [x] Markdown 终端渲染 + C++ 代码高亮
-- [x] 20 章 74 个知识点索引
-- [x] 范围匹配 (章节号 / 中文数字 / 关键字)
-- [x] Session 分文件夹归档 + meta-复盘总结报告
-- [x] 错题本 + 知识链索引
-- [x] 输入校验 (空答案拦截 / 模式选择校验)
-- [x] Agent 可访问 archive (bash ls + read 历史复盘)
+| 角色 | Skill | 用途 |
+|------|-------|------|
+| **主规则** | review-core | 运行时契约、工具路由、模式流程、profile 生命周期 |
+| **核心** | review-question / grade / discuss / summary | 出题/判题/讨论/复盘 |
+| **初始化** | review-init / fix | 资料包创建和修订 |
+| **子 skill** | review-profile-{structure,index,cards,exam-points,quality} | profile 构建各环节 |
 
-### 已知限制
+review-core 通过 `injectReviewCore()` 强制注入每个命令 prompt。子 skill 由 agent 按阶段通过 `/skill:xxx` 参考引用。
 
-- `compact()` 效果依赖 pi SDK 实现
-- 状态文件无并发保护
-- 无 CLI 参数解析 (仅交互模式)
+---
+
+## 8. 设计决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 运行形态 | pi-agent extension | 复用 pi TUI、上下文管理、认证体系 |
+| 交互入口 | `/review` 命令 | 零配置启动，首次体验可选 demo profile |
+| UI 渲染 | 代码工具 (pi-tui) | 一致性、可控性、避免 agent 自由发挥 |
+| Profile 安全 | draft 只写 + revision 副本 | 防止意外破坏 active profile |
+| 题目验证 | typebox schema | 运行时确保 agent 输出结构正确 |
+| 上下文 | pi-agent 自动 compact | 不手动管理，减少复杂度 |
+| 工具参数 | structured JSON | 机器可读，支持校验和 autocomplete |
+| 卡片匹配 | fuzzy bidirectional | 兼容新旧命名风格 |
+
+---
+
+## 9. 已归档的旧架构
+
+以下组件已移入 `docs/legacy/`，不再使用：
+
+- `review_cli.mjs` — 旧 Node.js CLI
+- `review_cli.py` — 旧 Python CLI
+- `lib/session.mjs` — 旧 SDK 会话封装
+- `lib/terminal.mjs` — 旧终端渲染
+
+旧版 `SYSTEM.md` 工作流已被 extension + skill 注入取代。
