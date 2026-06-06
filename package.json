@@ -1,0 +1,37 @@
+{
+  "name": "pi-review-agent",
+  "version": "3.0.0",
+  "description": "Pi Review Agent - a pi-agent extension for structured course review.",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0liveiraaa/pi-review-agent.git"
+  },
+  "homepage": "https://github.com/0liveiraaa/pi-review-agent#readme",
+  "bugs": {
+    "url": "https://github.com/0liveiraaa/pi-review-agent/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "pi": {
+    "extensions": ["./workspace/extensions/review/index.ts"],
+    "skills": ["./workspace/skills"]
+  },
+  "scripts": {
+    "setup-review": "npm --prefix workspace run setup-review",
+    "check-package": "npm --prefix workspace run check-package",
+    "check": "npm --prefix workspace run check",
+    "test": "npm --prefix workspace test"
+  },
+  "dependencies": {
+    "marked": "^18.0.5"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

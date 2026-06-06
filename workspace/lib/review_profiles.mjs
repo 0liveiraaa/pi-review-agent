@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { loadReviewConfig, PROJECT_ROOT } from "./review_config.mjs";
+import { loadReviewConfig, PACKAGE_ROOT, PROJECT_ROOT } from "./review_config.mjs";
 
 const ALLOWED_SOURCE_EXTENSIONS = new Set([".md", ".txt"]);
 const PROFILE_FILE = "profile.json";
@@ -65,7 +65,21 @@ function validateProfilePathModel(profile, paths) {
 }
 
 export function getProfilesRoot(config = loadReviewConfig()) {
+  seedBundledProfiles(config.profilesDirAbs);
   return config.profilesDirAbs;
+}
+
+function seedBundledProfiles(targetRoot) {
+  const bundledRoot = join(PACKAGE_ROOT, "profiles");
+  if (!existsSync(bundledRoot) || !statSync(bundledRoot).isDirectory()) return;
+  ensureDir(targetRoot);
+  for (const entry of readdirSync(bundledRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const source = join(bundledRoot, entry.name);
+    const target = join(targetRoot, entry.name);
+    if (existsSync(join(target, PROFILE_FILE))) continue;
+    copyDirRecursive(source, target);
+  }
 }
 
 export function getProfileDir(subjectId, config = loadReviewConfig()) {

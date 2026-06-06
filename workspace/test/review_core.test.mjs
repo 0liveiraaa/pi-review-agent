@@ -324,6 +324,18 @@ test("demo-review seed profile is always active in release state", () => {
   assert.ok(!demo.revisionOf, "demo-review must not be a revision draft");
 });
 
+test("bundled demo profile is seeded into an empty user data profile root", () => {
+  const profilesDirAbs = mkdtempSync(join(tmpdir(), "review-profile-store-"));
+  const config = { profilesDirAbs };
+  try {
+    const active = listActiveProfiles(config);
+    assert.ok(active.some((profile) => profile.subjectId === "demo-review"));
+    assert.ok(existsSync(join(profilesDirAbs, "demo-review", "profile.json")));
+  } finally {
+    rmSync(profilesDirAbs, { recursive: true, force: true });
+  }
+});
+
 test("loads profile cards by id, name, alias, and fuzzy file matches", () => {
   const dir = mkdtempSync(join(tmpdir(), "review-cards-"));
   try {
