@@ -2,16 +2,18 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadReviewConfig } from "./review_config.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const reviewConfig = loadReviewConfig();
 export const WORKSPACE = join(__dirname, "..");
 export const PROJECT_ROOT = join(WORKSPACE, "..");
 export const REFERENCE = join(PROJECT_ROOT, "reference");
 export const CARD_DIR = join(REFERENCE, "02-概念卡片");
 export const NOTE_DIR = join(REFERENCE, "01-章节笔记");
-export const STATE_DIR = join(WORKSPACE, "state");
+export const STATE_DIR = reviewConfig.stateDirAbs;
 export const DATA_DIR = join(WORKSPACE, "data");
-export const ARCHIVE_DIR = join(WORKSPACE, "archive");
+export const ARCHIVE_DIR = reviewConfig.archiveDirAbs;
 export const SESSION_ARCHIVE_DIR = join(ARCHIVE_DIR, "sessions");
 export const SUMMARY_DIR = join(ARCHIVE_DIR, "summaries");
 
@@ -20,6 +22,27 @@ const WRONG_BOOK_FILE = join(STATE_DIR, "wrong_book.json");
 const KNOWLEDGE_CHAINS_FILE = join(STATE_DIR, "knowledge_chains.json");
 const KNOWLEDGE_INDEX_FILE = join(DATA_DIR, "knowledge_index.json");
 const CARD_PROGRESS_FILE = join(STATE_DIR, "card_progress.json");
+
+const DEFAULT_PROGRESS = {
+  current_session: null,
+  history: {
+    total_questions_answered: 0,
+    total_correct: 0,
+    total_incorrect: 0,
+    chapters_covered: [],
+    sessions: [],
+  },
+};
+
+const DEFAULT_WRONG_BOOK = {
+  entries: [],
+  error_type_stats: {},
+};
+
+const DEFAULT_KNOWLEDGE_CHAINS = {
+  chains: [],
+  knowledge_points_linked: [],
+};
 
 // ─── JSON 读写 ───
 export function loadJSON(path) {
@@ -47,7 +70,7 @@ export function dateStr() {
 
 // ─── 进度 ───
 export function loadProgress() {
-  return loadJSON(PROGRESS_FILE);
+  return ensureJSON(PROGRESS_FILE, DEFAULT_PROGRESS);
 }
 
 export function saveProgress(data) {
@@ -110,7 +133,7 @@ export function endSession() {
 
 // ─── 错题本 ───
 export function loadWrongBook() {
-  return loadJSON(WRONG_BOOK_FILE);
+  return ensureJSON(WRONG_BOOK_FILE, DEFAULT_WRONG_BOOK);
 }
 
 export function loadCardProgress() {
@@ -192,7 +215,7 @@ export function getRecentWeaknesses(limit = 3) {
 
 // ─── 知识链 ───
 export function loadKnowledgeChains() {
-  return loadJSON(KNOWLEDGE_CHAINS_FILE);
+  return ensureJSON(KNOWLEDGE_CHAINS_FILE, DEFAULT_KNOWLEDGE_CHAINS);
 }
 
 export function updateKnowledgeChains(nodes) {
