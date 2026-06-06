@@ -19,13 +19,14 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 
 1. 读取用户选择的 active profile。
 2. 读取当前范围相关的资料。
-3. 如果当前模式是 `card_practice`，必须先调用 `review_card` 展示当前知识点卡片；只有返回 `action: "practice"` 后才继续出题。
-4. 参考 `review-question` 生成且只生成一道结构化题目。
+3. 按模式先调用对应代码展示工具：`review_card`、`review_exam_points` 或 `review_chapter`。
+4. 只有展示工具返回 `action: "practice"` 后，才参考 `review-question` 生成且只生成一道结构化题目。
 5. 调用 `review_answer`，让 UI 收集用户答案。
 6. 参考 `review-grade` 判题并解释。
 7. 如果用户追问，参考 `review-discuss` 展开讨论。
 8. 当用户表示本题结束，调用 `review_archive` 归档。
-9. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
+9. 归档后必须调用 `review_turn_action` 获取下一步动作。
+10. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
 
 在 `review_answer` 返回用户答案之前，不要提前公布答案。
 
@@ -40,6 +41,23 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 5. 如果返回 `skip`，跳过该知识点，询问或选择下一个复习目标。
 6. 如果返回 `exit`，结束当前卡片练习流程，并按用户意图决定是否总结。
 
+### 模式 2：直接练习
+
+`practice` 的考点摘要由代码工具负责。不要在出题前自由转述考点总结。
+
+1. 如果当前范围包含章节，先调用 `review_exam_points` 展示考试导向摘要。
+2. 如果 `review_exam_points` 返回 `action: "practice"`，再生成题目并调用 `review_answer`。
+3. 直接练习模式不要主动展示卡片，除非 `review_turn_action` 返回 `show_card`。
+4. 题目 JSON 必须包含 `source_basis`，说明依据的知识点或考点总结。
+
+### 模式 3：章节学习
+
+`chapter_study` 的章节材料展示由代码工具负责。不要自己用自然语言替代章节 UI。
+
+1. 出题前必须先调用 `review_chapter` 展示当前章节或小节材料。
+2. 如果 `review_chapter` 返回 `action: "practice"`，再生成题目并调用 `review_answer`。
+3. 如果返回 `next_section`、`skip` 或 `exit`，按返回动作处理，不要直接出题。
+
 ## 初始化与修订流程
 
 执行 `/review-init` 时：
@@ -51,7 +69,8 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 执行 `/review-fix` 时：
 
 - 参考 `review-fix`。
-- 读取已有 draft 文件和 `quality_report.md`。
+- 可以修订已有 draft，也可以从 active 创建 revision draft 后再修订。
+- 读取目标 draft 文件和 `quality_report.md`。
 - 使用 `review_profile_write` 应用修改。
 - 只有在用户明确确认后，才调用 `review_profile_enable`。
 
@@ -87,6 +106,9 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 ## 工具契约
 
 - `review_card` 用于代码渲染概念卡片。输入字段包括 `subject_id`、`knowledge_point_id` 或 `knowledge_point_name`；返回 `action`、`knowledge_point_id`、`card_found`。`action` 只可能是 `practice`、`next_card`、`skip`、`exit`。
+- `review_exam_points` 用于代码渲染章节考点总结。直接练习模式优先调用它。
+- `review_chapter` 用于代码渲染章节或小节材料。章节学习模式必须先调用它。
+- `review_turn_action` 用于题后统一动作菜单。`review_archive` 后必须调用。
 - `review_answer` 需要结构化题目 JSON，字段包括 `type`、`question_text`、`options`、`correct_answer`、`knowledge_points`、`difficulty`、`explanation_l1`。
 - `review_archive` 需要结构化判题数据，包括 `user_answer` 和显式布尔值 `is_correct`。
 - `review_summary` 用于保存最终 Markdown 总结报告。

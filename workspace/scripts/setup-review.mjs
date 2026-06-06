@@ -56,6 +56,10 @@ for (const skill of requiredSkills) {
 
 const profilesDir = resolve(workspaceRoot, "review_profiles");
 if (!existsSync(profilesDir)) mkdirSync(profilesDir, { recursive: true });
+if (!existsSync(resolve(profilesDir, "demo-review", "profile.json"))) {
+  ok = false;
+  console.error("Missing: review_profiles/demo-review/profile.json");
+}
 
 if (!ok) {
   process.exitCode = 1;
@@ -69,5 +73,5 @@ if (!ok) {
   console.log("Then use:");
   console.log("  /review       choose an active subject and review");
   console.log("  /review-init  create a draft subject profile");
-  console.log("  /review-fix   revise a draft profile");
+  console.log("  /review-fix   revise a draft profile or create a safe revision draft from an active profile");
 }

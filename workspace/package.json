@@ -6,7 +6,7 @@
   "main": "review_cli.mjs",
   "scripts": {
     "start": "node review_cli.mjs",
-    "check": "node --check review_cli.mjs && node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check scripts/setup-review.mjs",
+    "check": "node --check review_cli.mjs && node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check scripts/setup-review.mjs",
     "test": "node --test test/review_core.test.mjs",
     "setup-review": "node scripts/setup-review.mjs"
   },

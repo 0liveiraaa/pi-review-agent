@@ -8,13 +8,17 @@ import { getKpIdsForScope } from "../lib/state.mjs";
 import { buildReviewStartPrompt, listChapters, listKnowledgePoints, resolveReviewTarget } from "../lib/review_engine.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs";
 import { loadReviewConfig, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
-import { loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
+import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
+import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
+import { loadCardProgress, markCardSeen, updateCardPractice } from "../lib/state.mjs";
 import {
   assertValidProfileShape,
   createDraftProfile,
+  createRevisionDraft,
   enableProfile,
   listActiveProfiles,
   listDraftProfiles,
+  listProfiles,
   loadProfile,
   writeProfileFile,
 } from "../lib/review_profiles.mjs";
@@ -133,6 +137,32 @@ test("enables a draft profile", () => {
   }
 });
 
+test("active profile creates revision draft and enabling archives original", () => {
+  const subjectId = "revision-source";
+  const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
+  try {
+    createDraftProfile({ subjectId, name: "Revision Source", sourceDir: "." }, config);
+    writeProfileFile(subjectId, "knowledge_index.json", JSON.stringify({ subject: "Revision", chapters: {} }, null, 2), config);
+    enableProfile(subjectId, config);
+
+    const draft = createRevisionDraft(subjectId, "修订卡片", config);
+    assert.equal(draft.status, "draft");
+    assert.equal(draft.revisionOf, subjectId);
+    assert.match(draft.subjectId, /^revision-source__draft_/);
+    assert.throws(() => writeProfileFile(subjectId, "subject.md", "bad", config), /non-draft/);
+    writeProfileFile(draft.subjectId, "subject.md", "# Revision Draft\n", config);
+
+    const enabled = enableProfile(draft.subjectId, config);
+    assert.equal(enabled.status, "active");
+    assert.equal(loadProfile(subjectId, config).status, "archived");
+    assert.ok(listActiveProfiles(config).some((profile) => profile.subjectId === draft.subjectId));
+    assert.ok(!listActiveProfiles(config).some((profile) => profile.subjectId === subjectId));
+    assert.ok(listProfiles("archived", config).some((profile) => profile.subjectId === subjectId));
+  } finally {
+    rmSync(config.profilesDirAbs, { recursive: true, force: true });
+  }
+});
+
 test("writeProfileFile refuses active profiles", () => {
   const subjectId = "test-profile-active-write";
   const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
@@ -176,9 +206,13 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(prompt, /\/skill:review-question/);
   assert.match(prompt, /\/skill:review-grade/);
   assert.doesNotMatch(prompt, /必须先调用 review_card/);
+  assert.match(prompt, /review_exam_points/);
 
   const cardPrompt = buildReviewStartPrompt({ mode: "card_practice", chapterId: "1", profile }, loadReviewConfig());
   assert.match(cardPrompt, /必须先调用 review_card/);
+
+  const chapterPrompt = buildReviewStartPrompt({ mode: "chapter_study", chapterId: "1", profile }, loadReviewConfig());
+  assert.match(chapterPrompt, /review_chapter/);
 
   const extensionSource = readFileSync(join(WORKSPACE_ROOT, ".pi/extensions/review/index.ts"), "utf-8");
   assert.match(extensionSource, /\/skill:review-core/);
@@ -212,6 +246,9 @@ id: kp_ref
 name: 引用
 aliases: [reference]
 exam_level: high
+chapter: "1"
+source: chapters/1.1.md
+status: active
 ---
 
 # 引用
@@ -224,9 +261,57 @@ exam_level: high
 `);
   assert.equal(structured.id, "kp_ref");
   assert.equal(structured.name, "引用");
+  assert.equal(structured.chapter, "1");
+  assert.equal(structured.source, "chapters/1.1.md");
   assert.deepEqual(structured.aliases, ["reference"]);
   assert.equal(structured.sections["定义"], "引用是对象的别名。");
   assert.match(structured.sections["常见误区"], /重新绑定/);
+});
+
+test("card queue prefers unseen weak low-confidence cards", () => {
+  const dir = mkdtempSync(join(tmpdir(), "review-cards-"));
+  try {
+    writeFileSync(join(dir, "a.md"), "# A\n", "utf-8");
+    writeFileSync(join(dir, "b.md"), "# B\n", "utf-8");
+    const profile = { cardsDir: dir };
+    const queue = buildCardQueue(profile, [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+    ]);
+    assert.equal(queue[0].id, "a");
+    assert.equal(queue[0].card_position, 1);
+    assert.equal(queue[0].card_total, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("card progress records seen and practice statistics", () => {
+  const progressPath = join(WORKSPACE_ROOT, "state", "card_progress.json");
+  const hadFile = existsSync(progressPath);
+  const original = hadFile ? readFileSync(progressPath, "utf-8") : null;
+  try {
+    const before = loadCardProgress();
+    markCardSeen("unit_test_card");
+    updateCardPractice(["unit_test_card"], true);
+    const after = loadCardProgress();
+    assert.ok((after.cards.unit_test_card.seen_count || 0) >= (before.cards.unit_test_card?.seen_count || 0) + 1);
+    assert.ok((after.cards.unit_test_card.practice_count || 0) >= (before.cards.unit_test_card?.practice_count || 0) + 1);
+  } finally {
+    if (hadFile) writeFileSync(progressPath, original, "utf-8");
+    else rmSync(progressPath, { force: true });
+  }
+});
+
+test("demo profile is active and supports cards, chapters, and exam points", () => {
+  const profile = loadProfile("demo-review");
+  assert.equal(profile.status, "active");
+  assert.equal(assertValidProfileShape("demo-review"), true);
+  assert.ok(listActiveProfiles().some((item) => item.subjectId === "demo-review"));
+  assert.ok(loadProfileCard(profile, { id: "active_recall", name: "主动回忆" }));
+  assert.ok(listChapterMaterials(profile, "1").length >= 1);
+  assert.ok(loadChapterMaterial(profile, { chapterId: "1" })?.content.includes("主动回忆"));
+  assert.ok(loadExamPoints(profile, "1")?.[0]?.content.includes("考点清单"));
 });
 
 test("loads profile cards by id, name, alias, and fuzzy file matches", () => {

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
-import { CARD_DIR } from "./state.mjs";
+import { CARD_DIR, getRecentWeaknesses, loadCardProgress } from "./state.mjs";
 
 function parseFrontmatter(content) {
   if (!content.startsWith("---")) return { data: {}, body: content.trim() };
@@ -16,6 +16,8 @@ function parseFrontmatter(content) {
     let value = match[2].trim();
     if (value.startsWith("[") && value.endsWith("]")) {
       value = value.slice(1, -1).split(",").map((part) => part.trim()).filter(Boolean);
+    } else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
     }
     data[key] = value;
   }
@@ -111,6 +113,9 @@ export function normalizeCardMarkdown(content, kp = {}, path = "") {
     aliases: [...new Set(aliases.map(String))],
     difficulty: String(data.difficulty || kp.difficulty_baseline || ""),
     examLevel: String(data.exam_level || kp.exam_level || ""),
+    chapter: String(data.chapter || kp.chapter || ""),
+    source: String(data.source || ""),
+    status: String(data.status || kp.status || "active"),
     tags: [...new Set(tags.map(String))],
     path,
     title,
@@ -130,4 +135,38 @@ export function loadProfileCard(profile, kp = {}) {
 export function loadConceptCard(kpName) {
   const card = loadProfileCard({ cardsDir: CARD_DIR }, { name: kpName });
   return card?.raw || null;
+}
+
+export function buildCardQueue(profile, knowledgePoints = []) {
+  const progress = loadCardProgress();
+  const weak = new Set(getRecentWeaknesses(20));
+  return [...knowledgePoints]
+    .filter((kp) => kp && kp.status !== "removed")
+    .map((kp, index) => {
+      const state = progress.cards?.[kp.id] || {};
+      const confidenceRank = { low: 0, medium: 1, high: 2 }[state.confidence || "low"] ?? 0;
+      const card = loadProfileCard(profile, kp);
+      return {
+        ...kp,
+        queue_index: index,
+        card_found: Boolean(card),
+        seen_count: state.seen_count || 0,
+        practice_count: state.practice_count || 0,
+        correct_count: state.correct_count || 0,
+        confidence: state.confidence || "low",
+        _score: [
+          state.seen_count ? 1 : 0,
+          weak.has(kp.id) ? 0 : 1,
+          confidenceRank,
+          index,
+        ],
+      };
+    })
+    .sort((a, b) => {
+      for (let i = 0; i < a._score.length; i += 1) {
+        if (a._score[i] !== b._score[i]) return a._score[i] - b._score[i];
+      }
+      return 0;
+    })
+    .map(({ _score, ...kp }, index, arr) => ({ ...kp, card_position: index + 1, card_total: arr.length }));
 }

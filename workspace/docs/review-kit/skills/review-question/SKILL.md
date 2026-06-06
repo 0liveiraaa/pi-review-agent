@@ -30,6 +30,7 @@ description: 根据当前 profile 资料生成一道结构化复习题。用于 
   "knowledge_points": ["kp_or_existing_id"],
   "difficulty": "S-U",
   "explanation_l1": "简短直接解析",
+  "source_basis": "依据：第1章考点总结 / active_recall 卡片",
   "related_knowledge_chain": ["可选", "关联", "知识点"]
 }
 ```
@@ -47,6 +48,7 @@ description: 根据当前 profile 资料生成一道结构化复习题。用于 
 - 干扰项优先来自 profile 中的 `common_misconceptions`。
 - 不要把正确答案或解析写进 `question_text`。
 - 不要一次生成多道题。
+- 必须填写 `source_basis`，说明题目依据的知识点、卡片、章节或考点总结。
 - 尽量匹配指定难度；如果资料不足以支撑该难度，需要说明。
 - 保持跨科目中立。只有当 profile 支持时，才使用代码、公式、案例或例句。
 

@@ -25,13 +25,15 @@ import {
 } from "../../../lib/review_engine.mjs";
 import { loadReviewConfig } from "../../../lib/review_config.mjs";
 import { WORKSPACE_ROOT } from "../../../lib/review_config.mjs";
-import { loadProfileCard } from "../../../lib/cards.mjs";
+import { buildCardQueue, loadProfileCard } from "../../../lib/cards.mjs";
+import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../../../lib/review_materials.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../../../lib/review_question.mjs";
 import {
   createDraftProfile,
+  createRevisionDraft,
   enableProfile,
   listActiveProfiles,
-  listDraftProfiles,
+  listEditableProfiles,
   loadProfile,
   scanSourceFiles,
   writeProfileFile,
@@ -41,6 +43,7 @@ import {
   initSession,
   endSession,
   loadProgress,
+  markCardSeen,
   timestampNow,
   updateSession,
   writeArchiveFiles,
@@ -69,6 +72,18 @@ type CardResult = {
   knowledge_point_id: string;
   card_found: boolean;
   path?: string;
+  position?: number;
+  total?: number;
+};
+
+type MaterialResult = {
+  action: "practice" | "next_section" | "skip" | "exit";
+  path?: string;
+  found: boolean;
+};
+
+type TurnActionResult = {
+  action: "next_question" | "show_card" | "show_chapter" | "hint" | "discuss" | "increase_difficulty" | "summary" | "exit";
 };
 
 const QuestionSchema = Type.Object({
@@ -80,6 +95,7 @@ const QuestionSchema = Type.Object({
   options: Type.Optional(Type.Array(Type.String())),
   correct_answer: Type.Optional(Type.String()),
   explanation_l1: Type.Optional(Type.String()),
+  source_basis: Type.Optional(Type.String()),
   related_knowledge_chain: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -91,6 +107,7 @@ const ArchiveSchema = Type.Object({
   grading: Type.Optional(Type.String()),
   correct_answer: Type.Optional(Type.String()),
   explanation_l1: Type.Optional(Type.String()),
+  source_basis: Type.Optional(Type.String()),
   knowledge_points: Type.Optional(Type.Array(Type.String())),
   difficulty: Type.Optional(Type.String()),
   type: Type.Optional(Type.String()),
@@ -123,6 +140,19 @@ const CardSchema = Type.Object({
   subject_id: Type.String(),
   knowledge_point_id: Type.Optional(Type.String()),
   knowledge_point_name: Type.Optional(Type.String()),
+});
+
+const MaterialSchema = Type.Object({
+  subject_id: Type.String(),
+  chapter_id: Type.Optional(Type.String()),
+  section_path: Type.Optional(Type.String()),
+});
+
+const TurnActionSchema = Type.Object({
+  mode: Type.Optional(Type.String()),
+  subject_id: Type.Optional(Type.String()),
+  knowledge_point_id: Type.Optional(Type.String()),
+  chapter_id: Type.Optional(Type.String()),
 });
 
 function loadReviewCoreText() {
@@ -275,16 +305,16 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   return selection;
 }
 
-async function chooseDraftProfile(ctx: ExtensionContext): Promise<any | null> {
-  const drafts = listDraftProfiles();
-  if (drafts.length === 0) {
-    ctx.ui.notify("No draft review profiles. Run /review-init first.", "warning");
+async function chooseEditableProfile(ctx: ExtensionContext): Promise<any | null> {
+  const profiles = listEditableProfiles();
+  if (profiles.length === 0) {
+    ctx.ui.notify("No review profiles. Run /review-init first.", "warning");
     return null;
   }
-  const id = await selectItem(ctx, "选择要修订的 draft", drafts.map((profile) => ({
+  const id = await selectItem(ctx, "选择要修订的资料包", profiles.map((profile) => ({
     value: profile.subjectId,
     label: profile.name || profile.subjectId,
-    description: profile.subjectId,
+    description: `${profile.subjectId} | ${profile.status}${profile.status === "active" ? "（将创建修订草稿）" : ""}`,
   })));
   return id ? loadProfile(id) : null;
 }
@@ -311,10 +341,12 @@ function findKnowledgePoint(profile: any, id?: string, name?: string): any | nul
 
 function renderCardLines(card: any, width: number, theme: any) {
   const lines = [];
-  lines.push(theme.fg("accent", theme.bold(`概念卡片: ${card.name || card.title || card.id || "未命名"}`)));
+  const position = card.position && card.total ? ` ${card.position}/${card.total}` : "";
+  lines.push(theme.fg("accent", theme.bold(`概念卡片${position}: ${card.name || card.title || card.id || "未命名"}`)));
   const meta = [
     card.id ? `ID ${card.id}` : "",
     card.difficulty ? `难度 ${card.difficulty}` : "",
+    card.chapter ? `章节 ${card.chapter}` : "",
     card.examLevel ? `重要性 ${card.examLevel}` : "",
     card.tags?.length ? `标签 ${card.tags.join("、")}` : "",
   ].filter(Boolean).join(" | ");
@@ -322,7 +354,7 @@ function renderCardLines(card: any, width: number, theme: any) {
   if (card.path) lines.push(theme.fg("dim", card.path));
   lines.push("");
 
-  const preferred = ["定义", "📖 定义", "关键要点", "🔑 关键要点", "常见误区", "⚠️ 常见误区", "出题提示", "📝 出题提示"];
+  const preferred = ["定义", "📖 定义", "关键要点", "🔑 关键要点", "代码示例", "推导", "常见误区", "⚠️ 常见误区", "关联"];
   const used = new Set();
   for (const key of preferred) {
     if (!card.sections?.[key]) continue;
@@ -341,7 +373,8 @@ function renderCardLines(card: any, width: number, theme: any) {
 }
 
 async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promise<CardResult> {
-  if (!ctx.hasUI) return { action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path };
+  markCardSeen(kp?.id || "");
+  if (!ctx.hasUI) return { action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total };
   return await ctx.ui.custom<CardResult>((tui, theme, _kb, done) => {
     let cache: string[] | undefined;
     return {
@@ -363,21 +396,85 @@ async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promis
       },
       handleInput(data: string) {
         if (matchesKey(data, Key.escape)) {
-          done({ action: "exit", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+          done({ action: "exit", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
           return;
         }
         const lower = data.toLowerCase();
         if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
-          done({ action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+          done({ action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
         } else if (lower === "n") {
-          done({ action: "next_card", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+          done({ action: "next_card", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
         } else if (lower === "s") {
-          done({ action: "skip", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+          done({ action: "skip", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
         }
         tui.requestRender();
       },
     };
   });
+}
+
+function renderMarkdownPanel(title: string, body: string, width: number, theme: any) {
+  const rawLines = String(body || "").split(/\r?\n/).slice(0, 120);
+  return [
+    theme.fg("accent", theme.bold(title)),
+    "",
+    ...rawLines,
+  ].map((line) => truncateToWidth(line, width));
+}
+
+async function showMaterialPanel(ctx: ExtensionContext, title: string, body: string, path = ""): Promise<MaterialResult> {
+  if (!ctx.hasUI) return { action: "practice", path, found: Boolean(body) };
+  return await ctx.ui.custom<MaterialResult>((tui, theme, _kb, done) => {
+    let cache: string[] | undefined;
+    return {
+      render(width: number) {
+        if (cache) return cache;
+        const lines = body
+          ? renderMarkdownPanel(title, body, width, theme)
+          : [theme.fg("warning", `${title}: 未找到内容`)];
+        cache = [
+          theme.fg("accent", "─".repeat(width)),
+          ...lines,
+          "",
+          theme.fg("dim", "Enter 出题 • N 下一节 • S 跳过 • Esc 退出"),
+          theme.fg("accent", "─".repeat(width)),
+        ].map((line) => truncateToWidth(line, width));
+        return cache;
+      },
+      invalidate() {
+        cache = undefined;
+      },
+      handleInput(data: string) {
+        if (matchesKey(data, Key.escape)) {
+          done({ action: "exit", path, found: Boolean(body) });
+          return;
+        }
+        const lower = data.toLowerCase();
+        if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
+          done({ action: "practice", path, found: Boolean(body) });
+        } else if (lower === "n") {
+          done({ action: "next_section", path, found: Boolean(body) });
+        } else if (lower === "s") {
+          done({ action: "skip", path, found: Boolean(body) });
+        }
+        tui.requestRender();
+      },
+    };
+  });
+}
+
+async function chooseTurnAction(ctx: ExtensionContext): Promise<TurnActionResult> {
+  const value = await selectItem(ctx, "下一步", [
+    { value: "next_question", label: "下一题", description: "继续当前范围。" },
+    { value: "show_card", label: "看卡片", description: "查看当前知识点卡片。" },
+    { value: "show_chapter", label: "看章节", description: "查看当前章节材料。" },
+    { value: "hint", label: "提示", description: "给方向，不公布答案。" },
+    { value: "discuss", label: "追问", description: "继续讨论本题。" },
+    { value: "increase_difficulty", label: "提高难度", description: "下一题提高一级难度。" },
+    { value: "summary", label: "总结", description: "生成会话总结。" },
+    { value: "exit", label: "退出", description: "结束本次复习。" },
+  ]);
+  return { action: (value || "exit") as TurnActionResult["action"] };
 }
 
 function buildInitPrompt(profile: any, sourceFiles: Array<{ path: string; size: number }>) {
@@ -406,11 +503,16 @@ function buildInitPrompt(profile: any, sourceFiles: Array<{ path: string; size: 
 }
 
 function buildFixPrompt(profile: any, feedback: string) {
+  const revisionLine = profile.revisionOf
+    ? `这是 ${profile.revisionOf} 的修订草稿。不要直接修改原 active 资料包。`
+    : "";
   return [
     "请先使用 /skill:review-core 理解复习助手主规则，再使用 /skill:review-fix 修订一个跨科目复习资料包 draft。",
     `subjectId: ${profile.subjectId}`,
     `科目名称: ${profile.name}`,
+    `profile 状态: ${profile.status}`,
     `profile 根目录: ${profile.root}`,
+    revisionLine,
     "",
     "用户反馈:",
     feedback,
@@ -468,6 +570,7 @@ function buildArchive(params: any) {
     user_answer: params.user_answer,
     correct_answer: params.correct_answer || q?.correct_answer || params.grading || "",
     explanation_l1: params.explanation_l1 || q?.explanation_l1 || params.grading || "",
+    source_basis: params.source_basis || q?.source_basis || "",
     is_correct: params.is_correct,
     discussion_summary: params.discussion_summary || {
       core_misconception: params.is_correct ? "无" : "需要复盘本题错误根因",
@@ -572,16 +675,20 @@ export default function reviewExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("review-fix", {
-    description: "Revise a draft review profile with natural-language feedback",
+    description: "Revise a draft profile, or create a safe revision draft from an active profile",
     handler: async (_args, ctx) => {
       if (!ctx.isIdle()) {
         ctx.ui.notify("Agent is busy. Start fix after the current turn finishes.", "warning");
         return;
       }
-      const profile = await chooseDraftProfile(ctx);
+      let profile = await chooseEditableProfile(ctx);
       if (!profile) return;
       const feedback = await textInput(ctx, "输入修订反馈（如：第2章切太碎了；确认启用）");
       if (!feedback) return;
+      if (profile.status === "active") {
+        profile = createRevisionDraft(profile.subjectId, feedback);
+        ctx.ui.notify(`Created revision draft: ${profile.subjectId}`, "info");
+      }
       pi.sendUserMessage(injectReviewCore(buildFixPrompt(profile, feedback), reviewCoreText));
     },
   });
@@ -606,10 +713,15 @@ export default function reviewExtension(pi: ExtensionAPI): void {
           details: { action: "skip", knowledge_point_id: params.knowledge_point_id || "", card_found: false },
         };
       }
-      const card = loadProfileCard(profile, kp);
-      const result = await showReviewCard(ctx, card, kp);
+      const queue = buildCardQueue(profile, getProfileKnowledgePoints(profile));
+      const queued = queue.find((item) => item.id === kp.id) || { ...kp, card_position: 1, card_total: 1 };
+      const card = loadProfileCard(profile, queued);
+      const result = await showReviewCard(ctx, card, queued);
+      if (!card) {
+        result.path = `${profile.cardsDir}/${queued.id || queued.name}.md`;
+      }
       return {
-        content: [{ type: "text", text: `review_card action=${result.action} card_found=${result.card_found}` }],
+        content: [{ type: "text", text: `review_card action=${result.action} card_found=${result.card_found} position=${result.position || ""}/${result.total || ""}` }],
         details: result,
       };
     },
@@ -619,6 +731,99 @@ export default function reviewExtension(pi: ExtensionAPI): void {
     renderResult(result, _options, theme) {
       const details = result.details as CardResult | undefined;
       return new Text(theme.fg(details?.card_found ? "success" : "warning", `card ${details?.action || "handled"}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_exam_points",
+    label: "Review Exam Points",
+    description: "Render chapter exam-point summaries before direct practice questions.",
+    parameters: MaterialSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const profile = loadProfile(params.subject_id);
+      if (!profile) {
+        return {
+          content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }],
+          details: { action: "skip", found: false },
+        };
+      }
+      const docs = loadExamPoints(profile, params.chapter_id || "");
+      const body = docs?.map((doc: any) => doc.content).join("\n\n---\n\n") || "";
+      const path = docs?.map((doc: any) => doc.path).join("; ");
+      const result = await showMaterialPanel(ctx, `考点总结 ${params.chapter_id || ""}`.trim(), body, path);
+      return {
+        content: [{ type: "text", text: `review_exam_points action=${result.action} found=${result.found}` }],
+        details: result,
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_exam_points ")) + theme.fg("muted", `${args.subject_id || ""} ${args.chapter_id || ""}`), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as MaterialResult | undefined;
+      return new Text(theme.fg(details?.found ? "success" : "warning", `exam points ${details?.action || "handled"}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_chapter",
+    label: "Review Chapter",
+    description: "Render normalized chapter or section notes before chapter-study questions.",
+    parameters: MaterialSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const profile = loadProfile(params.subject_id);
+      if (!profile) {
+        return {
+          content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }],
+          details: { action: "skip", found: false },
+        };
+      }
+      const sections = listChapterMaterials(profile, params.chapter_id || "");
+      const selectedPath = params.section_path || (sections.length > 1 && ctx.hasUI
+        ? await selectItem(ctx, "选择章节小节", [
+            { value: "", label: "按顺序学习", description: "从第一小节开始。" },
+            ...sections.map((section: any) => ({
+              value: section.path,
+              label: section.title,
+              description: section.path,
+            })),
+          ])
+        : "");
+      const material = loadChapterMaterial(profile, { chapterId: params.chapter_id || "", sectionPath: selectedPath || "" });
+      const result = await showMaterialPanel(ctx, material?.title || `章节材料 ${params.chapter_id || ""}`.trim(), material?.content || "", material?.path);
+      return {
+        content: [{ type: "text", text: `review_chapter action=${result.action} found=${result.found}` }],
+        details: result,
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_chapter ")) + theme.fg("muted", `${args.subject_id || ""} ${args.chapter_id || ""}`), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as MaterialResult | undefined;
+      return new Text(theme.fg(details?.found ? "success" : "warning", `chapter ${details?.action || "handled"}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_turn_action",
+    label: "Review Turn Action",
+    description: "Show a unified post-question action menu for all review modes.",
+    parameters: TurnActionSchema,
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const result = await chooseTurnAction(ctx);
+      if (result.action === "increase_difficulty") updateSession({ _next_difficulty_up: true });
+      return {
+        content: [{ type: "text", text: `review_turn_action action=${result.action}` }],
+        details: result,
+      };
+    },
+    renderCall(_args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_turn_action")), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as TurnActionResult | undefined;
+      return new Text(theme.fg("success", `next action: ${details?.action || "exit"}`), 0, 0);
     },
   });
 

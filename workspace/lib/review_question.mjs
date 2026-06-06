@@ -44,6 +44,7 @@ export function normalizeQuestion(input) {
     options,
     correct_answer: q.correct_answer == null ? "" : String(q.correct_answer),
     explanation_l1: String(q.explanation_l1 || ""),
+    source_basis: String(q.source_basis || ""),
     related_knowledge_chain: Array.isArray(q.related_knowledge_chain)
       ? q.related_knowledge_chain.map(String)
       : [],
@@ -89,6 +90,24 @@ export function buildQuestionPrompt({
         "",
       ]
     : [];
+  const practiceLines = mode === "practice"
+    ? [
+        "模式 2 强制要求:",
+        "1. 如果本次范围包含章节，出题前先调用 review_exam_points 展示考点总结。",
+        "2. review_exam_points 返回 action=\"practice\" 后，才生成题目并调用 review_answer。",
+        "3. 直接练习模式不要主动展示卡片，除非用户在题后动作里选择看卡片。",
+        "",
+      ]
+    : [];
+  const chapterStudyLines = mode === "chapter_study"
+    ? [
+        "模式 3 强制要求:",
+        "1. 出题前必须先调用 review_chapter 展示当前章节或小节材料。",
+        "2. 只有 review_chapter 返回 action=\"practice\" 后，才生成题目并调用 review_answer。",
+        "3. 如果 review_chapter 返回 next_section/skip/exit，按返回动作处理，不要直接出题。",
+        "",
+      ]
+    : [];
   return [
     "请先使用 /skill:review-core 读取复习助手主规则。",
     "本回合通常需要按阶段参考 /skill:review-question、/skill:review-grade、/skill:review-discuss、/skill:review-summary。",
@@ -109,13 +128,15 @@ export function buildQuestionPrompt({
     examPointsDir ? `- 考点总结目录: ${examPointsDir}` : "",
     "",
     ...cardPracticeLines,
+    ...practiceLines,
+    ...chapterStudyLines,
     "流程要求:",
     "1. 先使用 Read 工具读取科目元描述和相关参考资料或历史归档。",
-    "2. 生成一道题，并只用 JSON 表示题目对象，字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1。",
+    "2. 生成一道题，并只用 JSON 表示题目对象，字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1/source_basis。",
     "3. 调用 review_answer 工具展示题目并收集用户答案。",
     "4. 使用 review-grade 的规则判题，输出 Level 1 解析。",
     "5. 讨论完成后调用 review_archive 工具保存结构化复盘。",
-    "6. 如果用户要求总结或结束本次复习，必须调用 review_summary 工具保存会话总结报告。",
-    "7. 询问用户是否继续下一题、提高难度、总结或退出。",
+    "6. review_archive 完成后必须调用 review_turn_action 工具，获取下一步动作。",
+    "7. 如果用户要求总结或结束本次复习，必须调用 review_summary 工具保存会话总结报告。",
   ].filter(Boolean).join("\n");
 }

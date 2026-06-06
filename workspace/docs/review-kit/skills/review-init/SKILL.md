@@ -143,6 +143,17 @@ quality_report.md        — 质量报告
 为每个知识点生成一张卡片（`cards/{中文简称}.md`）。
 
 ```markdown
+---
+id: {id}
+name: {知识点名称}
+aliases: [{别名1}, {别名2}]
+difficulty: {baseline}
+tags: [{tag1}, {tag2}]
+chapter: "{章节号}"
+source: chapters/{章节号}.{小节号}-{小节名}.md
+status: active
+---
+
 # {知识点名称}
 
 > **ID**: {id} | **难度**: {baseline} | **标签**: {tag1}、{tag2}

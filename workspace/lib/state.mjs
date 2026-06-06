@@ -19,6 +19,7 @@ const PROGRESS_FILE = join(STATE_DIR, "progress.json");
 const WRONG_BOOK_FILE = join(STATE_DIR, "wrong_book.json");
 const KNOWLEDGE_CHAINS_FILE = join(STATE_DIR, "knowledge_chains.json");
 const KNOWLEDGE_INDEX_FILE = join(DATA_DIR, "knowledge_index.json");
+const CARD_PROGRESS_FILE = join(STATE_DIR, "card_progress.json");
 
 // ─── JSON 读写 ───
 export function loadJSON(path) {
@@ -28,6 +29,11 @@ export function loadJSON(path) {
 export function saveJSON(path, data) {
   if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function ensureJSON(path, fallback) {
+  if (!existsSync(path)) saveJSON(path, fallback);
+  return loadJSON(path);
 }
 
 // ─── 时间戳 ───
@@ -105,6 +111,60 @@ export function endSession() {
 // ─── 错题本 ───
 export function loadWrongBook() {
   return loadJSON(WRONG_BOOK_FILE);
+}
+
+export function loadCardProgress() {
+  return ensureJSON(CARD_PROGRESS_FILE, { cards: {} });
+}
+
+export function saveCardProgress(data) {
+  saveJSON(CARD_PROGRESS_FILE, data);
+}
+
+function confidenceFor(entry) {
+  const practice = entry.practice_count || 0;
+  if (practice === 0) return entry.seen_count >= 2 ? "medium" : "low";
+  const accuracy = (entry.correct_count || 0) / practice;
+  if (practice >= 3 && accuracy >= 0.8) return "high";
+  if (accuracy >= 0.5) return "medium";
+  return "low";
+}
+
+export function markCardSeen(knowledgePointId) {
+  if (!knowledgePointId) return null;
+  const progress = loadCardProgress();
+  const entry = progress.cards[knowledgePointId] || {
+    seen_count: 0,
+    practice_count: 0,
+    correct_count: 0,
+    confidence: "low",
+  };
+  entry.seen_count = (entry.seen_count || 0) + 1;
+  entry.last_seen_at = timestampNow();
+  entry.confidence = confidenceFor(entry);
+  progress.cards[knowledgePointId] = entry;
+  saveCardProgress(progress);
+  return entry;
+}
+
+export function updateCardPractice(knowledgePointIds = [], isCorrect = false) {
+  const progress = loadCardProgress();
+  for (const kp of knowledgePointIds || []) {
+    if (!kp) continue;
+    const entry = progress.cards[kp] || {
+      seen_count: 0,
+      practice_count: 0,
+      correct_count: 0,
+      confidence: "low",
+    };
+    entry.practice_count = (entry.practice_count || 0) + 1;
+    if (isCorrect) entry.correct_count = (entry.correct_count || 0) + 1;
+    entry.last_practiced_at = timestampNow();
+    entry.confidence = confidenceFor(entry);
+    progress.cards[kp] = entry;
+  }
+  saveCardProgress(progress);
+  return progress;
 }
 
 export function saveWrongEntry(questionId, knowledgePoints, errorType, errorDetail) {
@@ -319,6 +379,9 @@ export function writeArchiveFiles(archive, questionId, sessionId) {
     "",
     archive.explanation_l1 || "",
     "",
+    "## 出题依据",
+    archive.source_basis || "（未记录）",
+    "",
     "## 讨论总结",
     `### 错误根因\n${disc.core_misconception || "无"}`,
     `### 确认的知识点\n${(disc.clarified_points || []).map((p) => `- ${p}`).join("\n") || "- 无"}`,
@@ -373,6 +436,8 @@ export function updateStateFromArchive(archive) {
 
   // 知识链
   if (chain.length) updateKnowledgeChains(chain);
+
+  updateCardPractice(archive.knowledge_points || [], isCorrect);
 
   // 进度
   const progress = loadProgress();

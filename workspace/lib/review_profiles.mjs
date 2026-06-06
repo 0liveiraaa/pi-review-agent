@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { loadReviewConfig, PROJECT_ROOT } from "./review_config.mjs";
 
@@ -118,6 +118,10 @@ export function listDraftProfiles(config = loadReviewConfig()) {
   return listProfiles("draft", config);
 }
 
+export function listEditableProfiles(config = loadReviewConfig()) {
+  return listProfiles(null, config).filter((profile) => profile.status === "draft" || profile.status === "active");
+}
+
 export function createDraftProfile({ subjectId, name, sourceDir }, config = loadReviewConfig()) {
   const id = cleanSubjectId(subjectId);
   const root = getProfileDir(id, config);
@@ -178,10 +182,55 @@ export function writeProfileFile(subjectId, relPath, content, config = loadRevie
 export function enableProfile(subjectId, config = loadReviewConfig()) {
   const profile = loadProfile(subjectId, config);
   if (!profile) throw new Error(`Profile not found: ${subjectId}`);
+  if (profile.status !== "draft" && profile.status !== "active") {
+    throw new Error(`Cannot enable profile with status ${profile.status}: ${subjectId}`);
+  }
   const raw = readJSON(join(profile.root, PROFILE_FILE));
+  if (raw.revisionOf) {
+    const original = loadProfile(raw.revisionOf, config);
+    if (original) {
+      const originalRaw = readJSON(join(original.root, PROFILE_FILE));
+      originalRaw.status = "archived";
+      originalRaw.supersededBy = profile.subjectId;
+      originalRaw.supersededAt = new Date().toISOString();
+      originalRaw.updatedAt = originalRaw.supersededAt;
+      writeJSON(join(original.root, PROFILE_FILE), originalRaw);
+    }
+    raw.revisionEnabledAt = new Date().toISOString();
+  }
   raw.status = "active";
   raw.updatedAt = new Date().toISOString();
   writeJSON(join(profile.root, PROFILE_FILE), raw);
+  return hydrateProfile(raw, config);
+}
+
+export function createRevisionDraft(subjectId, reason = "", config = loadReviewConfig()) {
+  const source = loadProfile(subjectId, config);
+  if (!source) throw new Error(`Profile not found: ${subjectId}`);
+  if (source.status !== "active") throw new Error(`Can only create revision drafts from active profiles: ${subjectId}`);
+
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  let draftId = cleanSubjectId(`${source.subjectId}__draft_${stamp}`);
+  let n = 2;
+  while (existsSync(getProfileDir(draftId, config))) {
+    draftId = cleanSubjectId(`${source.subjectId}__draft_${stamp}_${n}`);
+    n += 1;
+  }
+
+  const targetRoot = getProfileDir(draftId, config);
+  cpSync(source.root, targetRoot, { recursive: true });
+  const raw = readJSON(join(targetRoot, PROFILE_FILE));
+  const now = new Date().toISOString();
+  raw.subjectId = draftId;
+  raw.name = `${source.name || source.subjectId} 修订版`;
+  raw.status = "draft";
+  raw.revisionOf = source.subjectId;
+  raw.revisionCreatedAt = now;
+  raw.revisionReason = String(reason || "");
+  raw.updatedAt = now;
+  delete raw.supersededBy;
+  delete raw.supersededAt;
+  writeJSON(join(targetRoot, PROFILE_FILE), raw);
   return hydrateProfile(raw, config);
 }
 

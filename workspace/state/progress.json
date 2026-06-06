@@ -1,8 +1,8 @@
 {
   "current_session": {
-    "session_id": "s_2026-06-06T05-01-44-175Z",
-    "started": "2026-06-06T05:01:44.175Z",
-    "scope": "静态多态",
+    "session_id": "s_2026-06-06T05-34-35-982Z",
+    "started": "2026-06-06T05:34:35.982Z",
+    "scope": "第2章",
     "mode": "quiz",
     "total_questions": 0,
     "correct": 0,
@@ -11,7 +11,9 @@
     "question_sequence": 0,
     "covered_knowledge_points": [],
     "remaining_knowledge_points": [
-      "static_polymorphism"
+      "feedback_loop",
+      "error_diagnosis",
+      "summary_transfer"
     ]
   },
   "history": {

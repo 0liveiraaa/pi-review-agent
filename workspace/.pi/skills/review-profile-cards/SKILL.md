@@ -22,6 +22,17 @@ description: 概念卡片生成。为每个知识点生成复习卡片（模式 
 路径：`cards/{中文简称}.md`
 
 ````markdown
+---
+id: {id}
+name: {知识点名称}
+aliases: [{别名1}, {别名2}]
+difficulty: {baseline}
+tags: [{tag1}, {tag2}]
+chapter: "{章节号}"
+source: chapters/{章节号}.{小节号}-{小节名}.md
+status: active
+---
+
 # {知识点名称}
 
 > **ID**: {id} | **难度**: {baseline} | **标签**: {tag1}、{tag2}
@@ -72,3 +83,9 @@ description: 概念卡片生成。为每个知识点生成复习卡片（模式 
 **关联**：有实质交叉或递进关系。没有就写"暂无"，不要硬凑。
 
 **出题提示**：至少一个具体命题角度。
+
+## 兼容要求
+
+- 新卡片必须包含 frontmatter，至少有 `id`、`name`、`difficulty`、`tags`、`chapter`、`source`、`status`。
+- `status` 默认写 `active`。如果知识点不再使用，不要删除卡片，改为 `status: removed`。
+- `出题提示` 是 agent 使用区，代码展示卡片时默认不展示给学习者。
