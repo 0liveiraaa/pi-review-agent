@@ -1,122 +1,113 @@
 @echo off
-chcp 65001 >nul
-title pi-review-agent 一键安装脚本
-color 0A
+setlocal EnableExtensions
+
+title pi-review-agent installer
+
+set "ROOT=%~dp0"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 echo =============================================
-echo   pi-review-agent 一键安装
-echo   AI 驱动的 C++ OOP 复习助手
+echo   pi-review-agent installer
 echo =============================================
 echo.
 
-:: ---------- 1. 检查 Node.js ----------
-echo [1/4] 检查 Node.js 环境...
+echo [1/5] Checking Node.js...
 where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo !!! 未检测到 Node.js，请先安装 Node.js (>=22)
-    echo     下载地址：https://nodejs.org/
-    echo.
-    echo     安装完成后，重新运行本脚本即可。
-    pause
-    exit /b 1
+if errorlevel 1 (
+  echo ERROR: Node.js was not found.
+  echo Install Node.js 22 or newer from https://nodejs.org/
+  pause
+  exit /b 1
 )
 
-for /f "tokens=2 delims=v." %%a in ('node -v') do set NODE_MAJOR=%%a
-if %NODE_MAJOR% lss 22 (
-    echo !!! Node.js 版本过低（当前：%NODE_VERSION%），需要 ^>=22
-    echo     请升级后重试。
-    pause
-    exit /b 1
+for /f "usebackq delims=" %%v in (`node -v`) do set "NODE_VERSION=%%v"
+node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)"
+if errorlevel 1 (
+  echo ERROR: Node.js %NODE_VERSION% is too old. Node.js 22 or newer is required.
+  pause
+  exit /b 1
 )
-echo     ✓ Node.js %NODE_VERSION% 已就绪
+echo OK: Node.js %NODE_VERSION%
 echo.
 
-:: ---------- 2. 检查/安装 pi-agent ----------
-echo [2/4] 检查 pi-agent（复习助手运行平台）...
-
+echo [2/5] Checking pi-agent...
 where pi >nul 2>nul
-if %errorlevel% equ 0 (
-    for /f "tokens=*" %%i in ('pi --version 2^>nul') do set PI_VER=%%i
-    if not defined PI_VER set PI_VER=已安装
-    echo     发现已有 pi-agent（%PI_VER%），跳过安装。
-    echo     如需更新，可手动运行：npm update -g @earendil-works/pi-coding-agent
-) else (
-    echo     正在安装 @earendil-works/pi-coding-agent...
-    call npm install -g @earendil-works/pi-coding-agent
-    if %errorlevel% neq 0 (
-        echo !!! pi-agent 安装失败，请检查网络后重试。
-        pause
-        exit /b 1
-    )
-    where pi >nul 2>nul
-    if %errorlevel% neq 0 (
-        echo !!! pi 命令已安装但未生效，请关闭本窗口后重新打开。
-        pause
-        exit /b 1
-    )
-    echo     ✓ pi-agent 安装成功
-)
-echo.
-
-:: ---------- 3. 安装 workspace 依赖 ----------
-echo [3/4] 安装项目依赖（workspace）...
-cd /d "%~dp0workspace"
-if exist node_modules (
-    echo     发现已有 node_modules，执行增量更新...
-) else (
-    echo     正在安装...
-)
-call npm install
-if %errorlevel% neq 0 (
-    echo !!! 依赖安装失败，请检查网络后重试。
+if errorlevel 1 (
+  echo pi-agent was not found. Installing @earendil-works/pi-coding-agent...
+  call npm install -g @earendil-works/pi-coding-agent
+  if errorlevel 1 (
+    echo ERROR: Failed to install pi-agent.
     pause
     exit /b 1
+  )
 )
-echo     ✓ workspace 依赖已就绪
-echo.
-
-:: ---------- 4. 安装根目录依赖 ----------
-echo [4/4] 安装根目录依赖...
-cd /d "%~dp0"
-if not exist node_modules (
-    call npm install
-    if %errorlevel% neq 0 (
-        echo !!! 依赖安装失败，请检查网络后重试。
-        pause
-        exit /b 1
-    )
-) else (
-    echo     根目录依赖已就绪，跳过。
+where pi >nul 2>nul
+if errorlevel 1 (
+  echo ERROR: pi command is still unavailable. Restart this terminal and try again.
+  pause
+  exit /b 1
 )
-echo     ✓ 根目录依赖已就绪
+for /f "usebackq delims=" %%v in (`pi --version 2^>nul`) do set "PI_VERSION=%%v"
+if not defined PI_VERSION set "PI_VERSION=installed"
+echo OK: pi-agent %PI_VERSION%
 echo.
 
-:: ---------- 验证安装 ----------
-echo.
-echo =============================================
-echo   安装完成！正在验证...
-echo =============================================
+echo [3/5] Installing package dependencies...
+cd /d "%ROOT%"
+call npm install
+if errorlevel 1 (
+  echo ERROR: Root npm install failed.
+  pause
+  exit /b 1
+)
 
-cd /d "%~dp0workspace"
-
+if exist "%ROOT%\workspace\package.json" (
+  call npm --prefix "%ROOT%\workspace" install
+  if errorlevel 1 (
+    echo ERROR: Workspace npm install failed.
+    pause
+    exit /b 1
+  )
+)
+echo OK: dependencies installed
 echo.
-echo 检查项目文件完整性...
-call npm run setup-review
 
+echo [4/5] Registering this package with pi...
+call pi install "%ROOT%"
+if errorlevel 1 (
+  echo ERROR: pi install failed.
+  pause
+  exit /b 1
+)
+echo OK: package registered
 echo.
-echo 语法检查...
+
+echo [5/5] Verifying project...
+call npm run check-package
+if errorlevel 1 (
+  echo ERROR: package check failed.
+  pause
+  exit /b 1
+)
+
 call npm run check
+if errorlevel 1 (
+  echo ERROR: syntax check failed.
+  pause
+  exit /b 1
+)
 
 echo.
 echo =============================================
-echo   ✓✓✓ 安装成功！使用方法：
-echo.
-echo   1. 在 workspace 目录下输入 pi 启动
-echo   2. 在 pi 中输入 /review 开始复习
-echo   3. 输入 /review-init 创建复习档案
-echo   4. 输入 /review-fix 修改已有档案
-echo.
-echo   提示：在任意目录下输入 pi 都可启动
+echo   Install complete
 echo =============================================
+echo.
+echo Next steps:
+echo   1. Run: pi
+echo   2. Inside pi, type: /review
+echo.
+echo If you installed an older git copy before, run:
+echo   pi update git:git@github.com:0liveiraaa/pi-review-agent
+echo or remove and reinstall it.
 echo.
 pause

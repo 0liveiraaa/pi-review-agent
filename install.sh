@@ -1,90 +1,69 @@
 #!/usr/bin/env bash
-# pi-review-agent 一键安装脚本 (bash 版)
-# Windows 用户推荐使用 install.cmd，此脚本适用于 Git Bash / WSL
+set -euo pipefail
 
-set -e
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NODE_VERSION=$(node -v 2>/dev/null || true)
+ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 echo "============================================="
-echo "  pi-review-agent 一键安装"
-echo "  AI 驱动的 C++ OOP 复习助手"
+echo "  pi-review-agent installer"
 echo "============================================="
-echo ""
+echo
 
-# ---------- 1. 检查 Node.js ----------
-echo "[1/4] 检查 Node.js 环境..."
-if [ -z "$NODE_VERSION" ]; then
-    echo "!!! 未检测到 Node.js，请先安装 Node.js >= 22"
-    echo "    下载地址：https://nodejs.org/"
-    exit 1
+echo "[1/5] Checking Node.js..."
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERROR: Node.js was not found."
+  echo "Install Node.js 22 or newer from https://nodejs.org/"
+  exit 1
 fi
 
-NODE_MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
+NODE_VERSION="$(node -v)"
+NODE_MAJOR="$(node -e "console.log(process.versions.node.split('.')[0])")"
 if [ "$NODE_MAJOR" -lt 22 ]; then
-    echo "!!! Node.js 版本过低（当前：$NODE_VERSION），需要 >= 22"
-    exit 1
+  echo "ERROR: Node.js $NODE_VERSION is too old. Node.js 22 or newer is required."
+  exit 1
 fi
-echo "    ✓ Node.js $NODE_VERSION 已就绪"
-echo ""
+echo "OK: Node.js $NODE_VERSION"
+echo
 
-# ---------- 2. 检查/安装 pi-agent ----------
-echo "[2/4] 检查 pi-agent（复习助手运行平台）..."
-
-if command -v pi &>/dev/null; then
-    PI_VER=$(pi --version 2>/dev/null || echo "已安装")
-    echo "    发现已有 pi-agent（${PI_VER}），跳过安装。"
-    echo "    如需更新，可手动运行：npm update -g @earendil-works/pi-coding-agent"
-else
-    echo "    正在全局安装 @earendil-works/pi-coding-agent..."
-    npm install -g @earendil-works/pi-coding-agent
-    echo "    ✓ pi-agent 安装成功"
+echo "[2/5] Checking pi-agent..."
+if ! command -v pi >/dev/null 2>&1; then
+  echo "pi-agent was not found. Installing @earendil-works/pi-coding-agent..."
+  npm install -g @earendil-works/pi-coding-agent
 fi
-echo ""
 
-# ---------- 3. 安装 workspace 依赖 ----------
-echo "[3/4] 安装项目依赖（workspace）..."
-cd "$SCRIPT_DIR/workspace"
-if [ -d node_modules ]; then
-    echo "    发现已有 node_modules，执行增量更新..."
-else
-    echo "    正在安装..."
+if ! command -v pi >/dev/null 2>&1; then
+  echo "ERROR: pi command is still unavailable. Restart this terminal and try again."
+  exit 1
 fi
+echo "OK: pi-agent $(pi --version 2>/dev/null || echo installed)"
+echo
+
+echo "[3/5] Installing package dependencies..."
+cd "$ROOT"
 npm install
-echo "    ✓ workspace 依赖已就绪"
-echo ""
-
-# ---------- 4. 安装根目录依赖 ----------
-echo "[4/4] 安装根目录依赖..."
-cd "$SCRIPT_DIR"
-if [ ! -d node_modules ]; then
-    npm install
+if [ -f "$ROOT/workspace/package.json" ]; then
+  npm --prefix "$ROOT/workspace" install
 fi
-echo "    ✓ 根目录依赖已就绪"
-echo ""
+echo "OK: dependencies installed"
+echo
 
-# ---------- 验证 ----------
-echo ""
-echo "============================================="
-echo "  安装完成！正在验证..."
-echo "============================================="
-echo ""
+echo "[4/5] Registering this package with pi..."
+pi install "$ROOT"
+echo "OK: package registered"
+echo
 
-cd "$SCRIPT_DIR/workspace"
-echo "检查项目文件完整性..."
-npm run setup-review || true
+echo "[5/5] Verifying project..."
+npm run check-package
+npm run check
 
-echo ""
-echo "语法检查..."
-npm run check || true
-
-echo ""
+echo
 echo "============================================="
-echo "  ✓✓✓ 安装成功！使用方法："
-echo ""
-echo "  1. 在 workspace 目录下输入 pi 启动"
-echo "  2. 在 pi 中输入 /review 开始复习"
-echo "  3. 输入 /review-init 创建复习档案"
-echo "  4. 输入 /review-fix 修改已有档案"
+echo "  Install complete"
 echo "============================================="
+echo
+echo "Next steps:"
+echo "  1. Run: pi"
+echo "  2. Inside pi, type: /review"
+echo
+echo "If you installed an older git copy before, run:"
+echo "  pi update git:git@github.com:0liveiraaa/pi-review-agent"
+echo "or remove and reinstall it."
