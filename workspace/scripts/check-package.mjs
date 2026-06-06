@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 const packageRoot = resolve(import.meta.dirname, "..");
 const pkgPath = join(packageRoot, "package.json");
 const gitignorePath = join(packageRoot, "..", ".gitignore");
+const legacyLocalExtension = join(packageRoot, ".pi", "extensions", "review", "index.ts");
 
 let errors = 0;
 let warnings = 0;
@@ -137,6 +138,14 @@ for (const dir of profileDirs) {
 }
 if (demoFound) ok("demo-review profile present and active");
 else fail("demo-review profile not found or not active — check review_profiles/ or profiles/");
+
+// 2c. Legacy local .pi extension must not be shipped.
+// Pi auto-discovers it during local runs, which conflicts with the package manifest entry.
+if (existsSync(legacyLocalExtension)) {
+  fail("Legacy workspace/.pi/extensions/review/index.ts found; remove it to avoid duplicate tool registration");
+} else {
+  ok("No legacy workspace/.pi extension entry");
+}
 
 // ─── 3. Publish blacklist check ───
 console.log("");

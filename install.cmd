@@ -72,7 +72,21 @@ if exist "%ROOT%\workspace\package.json" (
 echo OK: dependencies installed
 echo.
 
-echo [4/5] Registering this package with pi...
+echo [4/6] Removing legacy local .pi entry...
+if exist "%ROOT%\workspace\.pi\extensions\review" (
+  rmdir /s /q "%ROOT%\workspace\.pi\extensions\review"
+  if errorlevel 1 (
+    echo ERROR: Failed to remove legacy workspace .pi extension.
+    pause
+    exit /b 1
+  )
+  echo OK: removed workspace\.pi\extensions\review
+) else (
+  echo OK: no legacy workspace .pi extension found
+)
+echo.
+
+echo [5/6] Registering this package with pi...
 call pi install "%ROOT%"
 if errorlevel 1 (
   echo ERROR: pi install failed.
@@ -82,7 +96,7 @@ if errorlevel 1 (
 echo OK: package registered
 echo.
 
-echo [5/5] Verifying project...
+echo [6/6] Verifying project...
 call npm run check-package
 if errorlevel 1 (
   echo ERROR: package check failed.

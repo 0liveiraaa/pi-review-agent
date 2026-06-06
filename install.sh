@@ -46,12 +46,21 @@ fi
 echo "OK: dependencies installed"
 echo
 
-echo "[4/5] Registering this package with pi..."
+echo "[4/6] Removing legacy local .pi entry..."
+if [ -d "$ROOT/workspace/.pi/extensions/review" ]; then
+  rm -rf "$ROOT/workspace/.pi/extensions/review"
+  echo "OK: removed workspace/.pi/extensions/review"
+else
+  echo "OK: no legacy workspace .pi extension found"
+fi
+echo
+
+echo "[5/6] Registering this package with pi..."
 pi install "$ROOT"
 echo "OK: package registered"
 echo
 
-echo "[5/5] Verifying project..."
+echo "[6/6] Verifying project..."
 npm run check-package
 npm run check
 

@@ -3,6 +3,10 @@ node_modules/
 # ── Dependencies ──
 workspace/node_modules/
 
+# Legacy local pi resources are not published.
+# The package entry is declared in root package.json.
+workspace/.pi/
+
 # ── Local source notes ──
 reference/
 
