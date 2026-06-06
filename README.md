@@ -24,7 +24,7 @@ pi
 pi install ./workspace
 
 # 或从 git 安装
-pi install git:github.com/user/repo
+pi install git@github.com:0liveiraaa/pi-review-agent.git
 ```
 
 进入 pi 后：
