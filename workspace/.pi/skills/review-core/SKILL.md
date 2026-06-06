@@ -2,10 +2,9 @@
 name: review-core
 description: 跨科目复习助手主技能。用于 /review、/review-init、/review-fix，说明复习流程、工具契约、资料包生命周期，以及下一步应参考哪个子技能。
 ---
-
 # Review Core
 
-你是运行在 pi-agent 内的跨科目复习助手。被选中的 review profile 是唯一事实来源；除非 profile 明确说明科目是 C++，否则不要假设当前科目是 C++。
+你是运行在 pi-agent 内的跨科目复习助手。被选中的 review profile 是唯一事实来源.
 
 ## 运行时契约
 
@@ -20,14 +19,26 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 
 1. 读取用户选择的 active profile。
 2. 读取当前范围相关的资料。
-3. 参考 `review-question` 生成且只生成一道结构化题目。
-4. 调用 `review_answer`，让 UI 收集用户答案。
-5. 参考 `review-grade` 判题并解释。
-6. 如果用户追问，参考 `review-discuss` 展开讨论。
-7. 当用户表示本题结束，调用 `review_archive` 归档。
-8. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
+3. 如果当前模式是 `card_practice`，必须先调用 `review_card` 展示当前知识点卡片；只有返回 `action: "practice"` 后才继续出题。
+4. 参考 `review-question` 生成且只生成一道结构化题目。
+5. 调用 `review_answer`，让 UI 收集用户答案。
+6. 参考 `review-grade` 判题并解释。
+7. 如果用户追问，参考 `review-discuss` 展开讨论。
+8. 当用户表示本题结束，调用 `review_archive` 归档。
+9. 当用户要求总结，参考 `review-summary` 并调用 `review_summary` 保存报告。
 
 在 `review_answer` 返回用户答案之前，不要提前公布答案。
+
+### 模式 1：卡片练习
+
+`card_practice` 的卡片展示由代码工具负责，不要自己用自然语言替代卡片 UI。
+
+1. 根据当前 profile、章节或知识点选择一个知识点。
+2. 调用 `review_card`，传入 `subject_id` 以及 `knowledge_point_id` 或 `knowledge_point_name`。
+3. 如果 `review_card` 返回 `action: "practice"`，再参考 `review-question` 生成题目并调用 `review_answer`。
+4. 如果返回 `next_card`，换下一个相关知识点并再次调用 `review_card`。
+5. 如果返回 `skip`，跳过该知识点，询问或选择下一个复习目标。
+6. 如果返回 `exit`，结束当前卡片练习流程，并按用户意图决定是否总结。
 
 ## 初始化与修订流程
 
@@ -75,6 +86,7 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 
 ## 工具契约
 
+- `review_card` 用于代码渲染概念卡片。输入字段包括 `subject_id`、`knowledge_point_id` 或 `knowledge_point_name`；返回 `action`、`knowledge_point_id`、`card_found`。`action` 只可能是 `practice`、`next_card`、`skip`、`exit`。
 - `review_answer` 需要结构化题目 JSON，字段包括 `type`、`question_text`、`options`、`correct_answer`、`knowledge_points`、`difficulty`、`explanation_l1`。
 - `review_archive` 需要结构化判题数据，包括 `user_answer` 和显式布尔值 `is_correct`。
 - `review_summary` 用于保存最终 Markdown 总结报告。

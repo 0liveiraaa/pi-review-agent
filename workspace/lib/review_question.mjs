@@ -80,6 +80,15 @@ export function buildQuestionPrompt({
   examPointsDir,
 }) {
   const typeLine = questionType ? `题型: ${questionType}` : "题型: 根据知识点选择 judgment/choice/multi_choice/short_answer";
+  const cardPracticeLines = mode === "card_practice"
+    ? [
+        "模式 1 强制要求:",
+        "1. 出题前必须先调用 review_card 工具展示当前知识点卡片。",
+        "2. 只有 review_card 返回 action=\"practice\" 后，才生成题目并调用 review_answer。",
+        "3. 如果 review_card 返回 next_card/skip/exit，按返回动作处理，不要直接出题。",
+        "",
+      ]
+    : [];
   return [
     "请先使用 /skill:review-core 读取复习助手主规则。",
     "本回合通常需要按阶段参考 /skill:review-question、/skill:review-grade、/skill:review-discuss、/skill:review-summary。",
@@ -99,6 +108,7 @@ export function buildQuestionPrompt({
     chaptersDir ? `- 章节材料目录: ${chaptersDir}` : "",
     examPointsDir ? `- 考点总结目录: ${examPointsDir}` : "",
     "",
+    ...cardPracticeLines,
     "流程要求:",
     "1. 先使用 Read 工具读取科目元描述和相关参考资料或历史归档。",
     "2. 生成一道题，并只用 JSON 表示题目对象，字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1。",

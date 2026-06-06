@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   Container,
   Editor,
@@ -22,6 +24,8 @@ import {
   resolveReviewTarget,
 } from "../../../lib/review_engine.mjs";
 import { loadReviewConfig } from "../../../lib/review_config.mjs";
+import { WORKSPACE_ROOT } from "../../../lib/review_config.mjs";
+import { loadProfileCard } from "../../../lib/cards.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../../../lib/review_question.mjs";
 import {
   createDraftProfile,
@@ -58,6 +62,13 @@ type ReviewSelection = {
 type AnswerResult = {
   answer: string;
   action: string;
+};
+
+type CardResult = {
+  action: "practice" | "next_card" | "skip" | "exit";
+  knowledge_point_id: string;
+  card_found: boolean;
+  path?: string;
 };
 
 const QuestionSchema = Type.Object({
@@ -107,6 +118,31 @@ const ProfileWriteSchema = Type.Object({
 const ProfileEnableSchema = Type.Object({
   subject_id: Type.String(),
 });
+
+const CardSchema = Type.Object({
+  subject_id: Type.String(),
+  knowledge_point_id: Type.Optional(Type.String()),
+  knowledge_point_name: Type.Optional(Type.String()),
+});
+
+function loadReviewCoreText() {
+  const path = join(WORKSPACE_ROOT, ".pi", "skills", "review-core", "SKILL.md");
+  if (!existsSync(path)) return "";
+  return readFileSync(path, "utf-8");
+}
+
+function injectReviewCore(prompt: string, coreText: string) {
+  if (!coreText) return prompt;
+  return [
+    "以下是本次 review 命令强制注入的 review-core 主规则。即使你没有显式加载 /skill:review-core，也必须遵守。",
+    "",
+    coreText,
+    "",
+    "以下是本次具体任务:",
+    "",
+    prompt,
+  ].join("\n");
+}
 
 async function selectItem(ctx: ExtensionContext, title: string, items: SelectItem[]): Promise<string | null> {
   if (!ctx.hasUI) return items[0]?.value ?? null;
@@ -253,6 +289,97 @@ async function chooseDraftProfile(ctx: ExtensionContext): Promise<any | null> {
   return id ? loadProfile(id) : null;
 }
 
+function getProfileKnowledgePoints(profile: any): any[] {
+  if (!profile?.knowledgeIndexPath || !existsSync(profile.knowledgeIndexPath)) return [];
+  const index = JSON.parse(readFileSync(profile.knowledgeIndexPath, "utf-8"));
+  const out: any[] = [];
+  for (const [chapterId, chapter] of Object.entries<any>(index.chapters || {})) {
+    for (const kp of chapter.knowledge_points || []) out.push({ ...kp, chapter: kp.chapter || chapterId });
+  }
+  return out;
+}
+
+function findKnowledgePoint(profile: any, id?: string, name?: string): any | null {
+  const query = String(id || name || "").trim().toLowerCase();
+  if (!query) return null;
+  return getProfileKnowledgePoints(profile).find((kp) => {
+    const values = [kp.id, kp.name, ...(Array.isArray(kp.aliases) ? kp.aliases : [])]
+      .map((value) => String(value || "").trim().toLowerCase());
+    return values.includes(query) || values.some((value) => value.includes(query) || query.includes(value));
+  }) || null;
+}
+
+function renderCardLines(card: any, width: number, theme: any) {
+  const lines = [];
+  lines.push(theme.fg("accent", theme.bold(`概念卡片: ${card.name || card.title || card.id || "未命名"}`)));
+  const meta = [
+    card.id ? `ID ${card.id}` : "",
+    card.difficulty ? `难度 ${card.difficulty}` : "",
+    card.examLevel ? `重要性 ${card.examLevel}` : "",
+    card.tags?.length ? `标签 ${card.tags.join("、")}` : "",
+  ].filter(Boolean).join(" | ");
+  if (meta) lines.push(theme.fg("muted", meta));
+  if (card.path) lines.push(theme.fg("dim", card.path));
+  lines.push("");
+
+  const preferred = ["定义", "📖 定义", "关键要点", "🔑 关键要点", "常见误区", "⚠️ 常见误区", "出题提示", "📝 出题提示"];
+  const used = new Set();
+  for (const key of preferred) {
+    if (!card.sections?.[key]) continue;
+    used.add(key);
+    lines.push(theme.fg("accent", theme.bold(key.replace(/^[^\p{L}\p{N}]+/u, ""))));
+    lines.push(...String(card.sections[key]).split(/\r?\n/));
+    lines.push("");
+  }
+
+  if (!used.size) {
+    lines.push(...String(card.raw || "").split(/\r?\n/).slice(0, 80));
+    lines.push("");
+  }
+
+  return lines.map((line) => truncateToWidth(line, width));
+}
+
+async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promise<CardResult> {
+  if (!ctx.hasUI) return { action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path };
+  return await ctx.ui.custom<CardResult>((tui, theme, _kb, done) => {
+    let cache: string[] | undefined;
+    return {
+      render(width: number) {
+        if (cache) return cache;
+        const body = card
+          ? renderCardLines(card, width, theme)
+          : [theme.fg("warning", `未找到卡片: ${kp?.name || kp?.id || "未知知识点"}`)];
+        cache = [
+          theme.fg("accent", "─".repeat(width)),
+          ...body,
+          theme.fg("dim", "Enter 出题 • N 下一张 • S 跳过 • Esc 退出"),
+          theme.fg("accent", "─".repeat(width)),
+        ].map((line) => truncateToWidth(line, width));
+        return cache;
+      },
+      invalidate() {
+        cache = undefined;
+      },
+      handleInput(data: string) {
+        if (matchesKey(data, Key.escape)) {
+          done({ action: "exit", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+          return;
+        }
+        const lower = data.toLowerCase();
+        if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
+          done({ action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+        } else if (lower === "n") {
+          done({ action: "next_card", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+        } else if (lower === "s") {
+          done({ action: "skip", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path });
+        }
+        tui.requestRender();
+      },
+    };
+  });
+}
+
 function buildInitPrompt(profile: any, sourceFiles: Array<{ path: string; size: number }>) {
   return [
     "请先使用 /skill:review-core 理解复习助手主规则，再使用 /skill:review-init 初始化一个跨科目复习资料包 draft。",
@@ -389,6 +516,7 @@ function createReviewAutocompleteProvider(current: AutocompleteProvider): Autoco
 
 export default function reviewExtension(pi: ExtensionAPI): void {
   const config = loadReviewConfig();
+  const reviewCoreText = loadReviewCoreText();
 
   pi.registerCommand("review", {
     description: "Start the course review assistant",
@@ -411,7 +539,7 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       const courseName = selection.profile?.name || config.courseName;
       ctx.ui.setStatus("review", ctx.ui.theme.fg("accent", `review:${courseName} ${sid.slice(0, 12)}`));
 
-      const prompt = buildReviewStartPrompt(selection, { ...config, courseName });
+      const prompt = injectReviewCore(buildReviewStartPrompt(selection, { ...config, courseName }), reviewCoreText);
       pi.sendUserMessage(prompt);
     },
   });
@@ -439,7 +567,7 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         return;
       }
       ctx.ui.notify(`Draft profile created: ${profile.subjectId}`, "info");
-      pi.sendUserMessage(buildInitPrompt(profile, sourceFiles));
+      pi.sendUserMessage(injectReviewCore(buildInitPrompt(profile, sourceFiles), reviewCoreText));
     },
   });
 
@@ -454,7 +582,43 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       if (!profile) return;
       const feedback = await textInput(ctx, "输入修订反馈（如：第2章切太碎了；确认启用）");
       if (!feedback) return;
-      pi.sendUserMessage(buildFixPrompt(profile, feedback));
+      pi.sendUserMessage(injectReviewCore(buildFixPrompt(profile, feedback), reviewCoreText));
+    },
+  });
+
+  pi.registerTool({
+    name: "review_card",
+    label: "Review Card",
+    description: "Render a concept card from the selected review profile before card-practice questions.",
+    parameters: CardSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const profile = loadProfile(params.subject_id);
+      if (!profile) {
+        return {
+          content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }],
+          details: { action: "skip", knowledge_point_id: params.knowledge_point_id || "", card_found: false },
+        };
+      }
+      const kp = findKnowledgePoint(profile, params.knowledge_point_id, params.knowledge_point_name);
+      if (!kp) {
+        return {
+          content: [{ type: "text", text: `Knowledge point not found: ${params.knowledge_point_id || params.knowledge_point_name || ""}` }],
+          details: { action: "skip", knowledge_point_id: params.knowledge_point_id || "", card_found: false },
+        };
+      }
+      const card = loadProfileCard(profile, kp);
+      const result = await showReviewCard(ctx, card, kp);
+      return {
+        content: [{ type: "text", text: `review_card action=${result.action} card_found=${result.card_found}` }],
+        details: result,
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_card ")) + theme.fg("muted", args.knowledge_point_id || args.knowledge_point_name || ""), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as CardResult | undefined;
+      return new Text(theme.fg(details?.card_found ? "success" : "warning", `card ${details?.action || "handled"}`), 0, 0);
     },
   });
 

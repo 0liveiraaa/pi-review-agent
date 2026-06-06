@@ -225,5 +225,10 @@ export function assertValidProfileShape(subjectId, config = loadReviewConfig()) 
   if (!index || typeof index !== "object" || !index.chapters || typeof index.chapters !== "object") {
     throw new Error("knowledge_index.json must contain a chapters object.");
   }
+  for (const [chapterId, chapter] of Object.entries(index.chapters)) {
+    if (!Array.isArray(chapter?.knowledge_points)) {
+      throw new Error(`knowledge_index.json chapter ${chapterId} must contain a knowledge_points array.`);
+    }
+  }
   return true;
 }

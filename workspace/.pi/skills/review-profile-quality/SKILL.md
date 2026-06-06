@@ -11,6 +11,10 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 
 逐文件检查，不是抽查。发现一个问题记一个问题，宁可多记不少记。
 
+## 必查兼容项
+
+`knowledge_index.json` 必须包含 `chapters` object，且每个章节都必须有 `knowledge_points` 数组。只有顶层 `knowledge_points` 或只有 `chapters.*.sections` 的资料包不能通过审核。
+
 ## 审计维度
 
 ### 完整性

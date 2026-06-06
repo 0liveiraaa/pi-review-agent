@@ -1,0 +1,26 @@
+{
+  "question_id": "c-_review_001",
+  "knowledge_points": [
+    "polymorphism_concept"
+  ],
+  "difficulty": "S-U",
+  "type": "judgment",
+  "timestamp": "2026-06-05T18:24:11.708Z",
+  "question_text": "判断以下说法是否正确：在 C++ 中，只有通过虚函数实现的动态绑定才算是多态，函数重载和模板不属于多态的范畴。",
+  "options": [
+    "正确",
+    "错误"
+  ],
+  "user_answer": "错误",
+  "correct_answer": "错误",
+  "explanation_l1": "❌ 说法错误。多态的核心定义是'相同的消息请求，在不同对象或不同参数条件下，执行不同的代码体'。函数重载和模板也满足'同名不同体'的条件，属于静态多态（编译期确定调用目标），而虚函数动态绑定属于动态多态（运行期参与决定）。不要把\"多态\"等同于\"虚函数\"。",
+  "is_correct": true,
+  "discussion_summary": {
+    "core_misconception": "无",
+    "clarified_points": [],
+    "user_self_correction": null,
+    "lingering_questions": []
+  },
+  "knowledge_chain_l3": [],
+  "suggestion_next": "继续按当前范围复习。"
+}

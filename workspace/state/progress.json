@@ -1,29 +1,22 @@
 {
   "current_session": {
-    "session_id": "s_2026-06-05T16-05-06-334Z",
-    "started": "2026-06-05T16:05:06.334Z",
-    "scope": "第6章",
+    "session_id": "s_2026-06-06T05-01-44-175Z",
+    "started": "2026-06-06T05:01:44.175Z",
+    "scope": "静态多态",
     "mode": "quiz",
-    "total_questions": 1,
+    "total_questions": 0,
     "correct": 0,
-    "incorrect": 1,
+    "incorrect": 0,
     "current_question_index": 0,
     "question_sequence": 0,
-    "covered_knowledge_points": [
-      "类与对象的关系",
-      "整体与部分的关系（组成关系）",
-      "对象实例化"
-    ],
+    "covered_knowledge_points": [],
     "remaining_knowledge_points": [
-      "class-object",
-      "object-size"
-    ],
-    "last_lingering_question": null,
-    "last_action": "archived"
+      "static_polymorphism"
+    ]
   },
   "history": {
-    "total_questions_answered": 16,
-    "total_correct": 15,
+    "total_questions_answered": 18,
+    "total_correct": 17,
     "total_incorrect": 1,
     "chapters_covered": [
       "指针",
@@ -31,7 +24,8 @@
       "3",
       "2",
       "单元学习-第11章",
-      "单元学习-第17章"
+      "单元学习-第17章",
+      "第19章"
     ],
     "sessions": [
       {
@@ -88,6 +82,14 @@
         "scope": "单元学习-第17章",
         "total_questions": 6,
         "correct": 6,
+        "incorrect": 0
+      },
+      {
+        "session_id": "s_2026-06-05T18-20-39-765Z",
+        "date": "20260605",
+        "scope": "第19章",
+        "total_questions": 2,
+        "correct": 2,
         "incorrect": 0
       }
     ]
