@@ -155,6 +155,40 @@ const TurnActionSchema = Type.Object({
   chapter_id: Type.Optional(Type.String()),
 });
 
+const REVIEW_PANEL_BODY_LINES = 18;
+const REVIEW_INPUT_TITLE_LINES = 8;
+
+function clampScroll(scroll: number, totalLines: number, visibleLines: number) {
+  return Math.max(0, Math.min(scroll, Math.max(0, totalLines - visibleLines)));
+}
+
+function renderWindowedLines(lines: string[], scroll: number, visibleLines = REVIEW_PANEL_BODY_LINES) {
+  const safeScroll = clampScroll(scroll, lines.length, visibleLines);
+  return {
+    safeScroll,
+    visible: lines.slice(safeScroll, safeScroll + visibleLines),
+    hasOverflow: lines.length > visibleLines,
+    total: lines.length,
+  };
+}
+
+function renderTruncatedBlock(text: string, width: number, maxLines = REVIEW_INPUT_TITLE_LINES) {
+  const lines = String(text || "").split(/\r?\n/).map((line) => truncateToWidth(line, width));
+  if (lines.length <= maxLines) return lines;
+  return [
+    ...lines.slice(0, Math.max(1, maxLines - 1)),
+    truncateToWidth(`... 已省略 ${lines.length - maxLines + 1} 行`, width),
+  ];
+}
+
+function isScrollUp(data: string) {
+  return data.toLowerCase() === "k" || matchesKey(data, Key.up);
+}
+
+function isScrollDown(data: string) {
+  return data.toLowerCase() === "j" || matchesKey(data, Key.down);
+}
+
 function loadReviewCoreText() {
   const path = join(WORKSPACE_ROOT, ".pi", "skills", "review-core", "SKILL.md");
   if (!existsSync(path)) return "";
@@ -229,7 +263,9 @@ async function textInput(ctx: ExtensionContext, title: string, initial = ""): Pr
         if (cache) return cache;
         cache = [
           theme.fg("accent", "─".repeat(width)),
-          theme.fg("accent", theme.bold(title)),
+          ...renderTruncatedBlock(title, width).map((line, index) => (
+            index === 0 ? theme.fg("accent", theme.bold(line)) : theme.fg("muted", line)
+          )),
           "",
           ...editor.render(width),
           "",
@@ -377,16 +413,24 @@ async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promis
   if (!ctx.hasUI) return { action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total };
   return await ctx.ui.custom<CardResult>((tui, theme, _kb, done) => {
     let cache: string[] | undefined;
+    let scroll = 0;
+    let totalLines = 0;
     return {
       render(width: number) {
         if (cache) return cache;
         const body = card
           ? renderCardLines(card, width, theme)
           : [theme.fg("warning", `未找到卡片: ${kp?.name || kp?.id || "未知知识点"}`)];
+        const windowed = renderWindowedLines(body, scroll);
+        scroll = windowed.safeScroll;
+        totalLines = windowed.total;
+        const scrollHint = windowed.hasOverflow
+          ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
+          : "";
         cache = [
           theme.fg("accent", "─".repeat(width)),
-          ...body,
-          theme.fg("dim", "Enter 出题 • N 下一张 • S 跳过 • Esc 退出"),
+          ...windowed.visible,
+          theme.fg("dim", `Enter 出题 • N 下一张 • S 跳过 • Esc 退出${scrollHint}`),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
         return cache;
@@ -406,6 +450,12 @@ async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promis
           done({ action: "next_card", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
         } else if (lower === "s") {
           done({ action: "skip", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
+        } else if (isScrollUp(data)) {
+          scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
+        } else if (isScrollDown(data)) {
+          scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
         }
         tui.requestRender();
       },
@@ -426,17 +476,25 @@ async function showMaterialPanel(ctx: ExtensionContext, title: string, body: str
   if (!ctx.hasUI) return { action: "practice", path, found: Boolean(body) };
   return await ctx.ui.custom<MaterialResult>((tui, theme, _kb, done) => {
     let cache: string[] | undefined;
+    let scroll = 0;
+    let totalLines = 0;
     return {
       render(width: number) {
         if (cache) return cache;
         const lines = body
           ? renderMarkdownPanel(title, body, width, theme)
           : [theme.fg("warning", `${title}: 未找到内容`)];
+        const windowed = renderWindowedLines(lines, scroll);
+        scroll = windowed.safeScroll;
+        totalLines = windowed.total;
+        const scrollHint = windowed.hasOverflow
+          ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
+          : "";
         cache = [
           theme.fg("accent", "─".repeat(width)),
-          ...lines,
+          ...windowed.visible,
           "",
-          theme.fg("dim", "Enter 出题 • N 下一节 • S 跳过 • Esc 退出"),
+          theme.fg("dim", `Enter 出题 • N 下一节 • S 跳过 • Esc 退出${scrollHint}`),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
         return cache;
@@ -456,6 +514,12 @@ async function showMaterialPanel(ctx: ExtensionContext, title: string, body: str
           done({ action: "next_section", path, found: Boolean(body) });
         } else if (lower === "s") {
           done({ action: "skip", path, found: Boolean(body) });
+        } else if (isScrollUp(data)) {
+          scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
+        } else if (isScrollDown(data)) {
+          scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
         }
         tui.requestRender();
       },
@@ -686,7 +750,12 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       const feedback = await textInput(ctx, "输入修订反馈（如：第2章切太碎了；确认启用）");
       if (!feedback) return;
       if (profile.status === "active") {
-        profile = createRevisionDraft(profile.subjectId, feedback);
+        try {
+          profile = createRevisionDraft(profile.subjectId, feedback);
+        } catch (err: any) {
+          ctx.ui.notify(`Failed to create revision draft: ${err?.message || String(err)}`, "error");
+          return;
+        }
         ctx.ui.notify(`Created revision draft: ${profile.subjectId}`, "info");
       }
       pi.sendUserMessage(injectReviewCore(buildFixPrompt(profile, feedback), reviewCoreText));

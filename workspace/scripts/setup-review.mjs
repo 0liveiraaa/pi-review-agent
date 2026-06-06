@@ -1,5 +1,5 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 const workspaceRoot = resolve(import.meta.dirname, "..");
 
@@ -20,6 +20,20 @@ const rel = (abs) => abs.replace(/\\/g, "/").replace(/^.*?(?=(workspace|\.pi|lib
 
 function ok(msg) { report.push(`  ${"✅"} ${msg}`); }
 function fail(msg) { report.push(`  ${"❌"} ${msg}`); errors++; }
+function ensureDir(path) { if (!existsSync(path)) mkdirSync(path, { recursive: true }); }
+function copyDirRecursive(source, target) {
+  ensureDir(target);
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const sourcePath = join(source, entry.name);
+    const targetPath = join(target, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(sourcePath, targetPath);
+    } else if (entry.isFile()) {
+      ensureDir(dirname(targetPath));
+      copyFileSync(sourcePath, targetPath);
+    }
+  }
+}
 
 // ─── Scan skills ───
 report.push("");
@@ -30,14 +44,14 @@ report.push("");
 
 // 1. Skill 目录
 if (existsSync(SOURCE_SKILLS)) {
-  mkdirSync(SKILLS_DIR, { recursive: true });
+  ensureDir(SKILLS_DIR);
   let installed = 0;
   for (const entry of readdirSync(SOURCE_SKILLS, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const src = join(SOURCE_SKILLS, entry.name);
     const dst = join(SKILLS_DIR, entry.name);
     if (!existsSync(dst)) {
-      cpSync(src, dst, { recursive: true });
+      copyDirRecursive(src, dst);
       report.push(`  📦 Installed skill template: ${entry.name}`);
       installed++;
     }
@@ -180,6 +194,9 @@ report.push("  2. Inside pi, type:");
 report.push("     /review       Start a review session (choose profile, mode, scope)");
 report.push("     /review-init  Create a new review profile from your notes");
 report.push("     /review-fix   Revise an existing profile");
+report.push("");
+report.push("  First demo path:");
+report.push("     /review -> 学习方法 Demo -> any mode");
 report.push("");
 report.push("  ℹ️  This is a pi-agent extension, not a standalone app.");
 report.push("     Entry point: .pi/extensions/review/index.ts");

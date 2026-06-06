@@ -1,6 +1,6 @@
 {
-  "courseName": "C++ 面向对象程序设计",
-  "profile": "cpp-oop",
+  "courseName": "Pi Review Demo",
+  "profile": "demo-review",
   "referenceRoot": "../reference",
   "chapterNotesDir": "../reference/01-章节笔记",
   "conceptCardsDir": "../reference/02-概念卡片",

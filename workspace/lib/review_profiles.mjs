@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { loadReviewConfig, PROJECT_ROOT } from "./review_config.mjs";
 
@@ -16,6 +16,23 @@ function readJSON(path) {
 function writeJSON(path, data) {
   ensureDir(dirname(path));
   writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function copyDirRecursive(source, target) {
+  if (!existsSync(source) || !statSync(source).isDirectory()) {
+    throw new Error(`Source profile directory not found: ${source}`);
+  }
+  ensureDir(target);
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const sourcePath = join(source, entry.name);
+    const targetPath = join(target, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(sourcePath, targetPath);
+    } else if (entry.isFile()) {
+      ensureDir(dirname(targetPath));
+      copyFileSync(sourcePath, targetPath);
+    }
+  }
 }
 
 function cleanSubjectId(value) {
@@ -218,7 +235,7 @@ export function createRevisionDraft(subjectId, reason = "", config = loadReviewC
   }
 
   const targetRoot = getProfileDir(draftId, config);
-  cpSync(source.root, targetRoot, { recursive: true });
+  copyDirRecursive(source.root, targetRoot);
   const raw = readJSON(join(targetRoot, PROFILE_FILE));
   const now = new Date().toISOString();
   raw.subjectId = draftId;
