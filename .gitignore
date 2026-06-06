@@ -3,6 +3,12 @@ node_modules/
 # ── Dependencies ──
 workspace/node_modules/
 
+# ── Local source notes ──
+reference/
+
+# ── Local review profile store ──
+workspace/review_profiles/
+
 # ── Python cache ──
 workspace/__pycache__/
 *.pyc

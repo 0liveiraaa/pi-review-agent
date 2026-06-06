@@ -1,0 +1,28 @@
+{
+  "files": [
+    {
+      "profile_path": "subject.md",
+      "source_path": "reference/00-课程总览.md"
+    },
+    {
+      "profile_path": "knowledge_index.json",
+      "source_path": "workspace/data/knowledge_index.json"
+    },
+    {
+      "profile_path": "chapters",
+      "source_path": "reference/01-章节笔记"
+    },
+    {
+      "profile_path": "cards",
+      "source_path": "reference/02-概念卡片"
+    },
+    {
+      "profile_path": "exam_points",
+      "source_path": "reference/04-考点整理"
+    }
+  ],
+  "notes": [
+    "source_path records the original local source before publishing.",
+    "profile_path points to self-contained files bundled inside this profile."
+  ]
+}

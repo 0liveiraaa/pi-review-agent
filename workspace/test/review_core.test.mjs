@@ -324,13 +324,16 @@ test("demo-review seed profile is always active in release state", () => {
   assert.ok(!demo.revisionOf, "demo-review must not be a revision draft");
 });
 
-test("bundled demo profile is seeded into an empty user data profile root", () => {
+test("bundled profiles are seeded into an empty user data profile root", () => {
   const profilesDirAbs = mkdtempSync(join(tmpdir(), "review-profile-store-"));
   const config = { profilesDirAbs };
   try {
     const active = listActiveProfiles(config);
     assert.ok(active.some((profile) => profile.subjectId === "demo-review"));
+    assert.ok(active.some((profile) => profile.subjectId === "cpp-oop"));
     assert.ok(existsSync(join(profilesDirAbs, "demo-review", "profile.json")));
+    assert.ok(existsSync(join(profilesDirAbs, "cpp-oop", "profile.json")));
+    assert.equal(assertValidProfileShape("cpp-oop", config), true);
   } finally {
     rmSync(profilesDirAbs, { recursive: true, force: true });
   }
