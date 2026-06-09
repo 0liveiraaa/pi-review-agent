@@ -43,12 +43,15 @@ import {
   initSession,
   endSession,
   loadProgress,
+  loadLearningProfile,
+  formatLearningProfileForPrompt,
   markCardSeen,
   timestampNow,
   updateSession,
   writeArchiveFiles,
   writeSummaryFile,
   updateStateFromArchive,
+  updateLearningProfileFromSummary,
 } from "../../lib/state.mjs";
 
 type ReviewSelection = {
@@ -59,6 +62,7 @@ type ReviewSelection = {
   knowledgePointId?: string;
   knowledgePointLabel?: string;
   difficulty?: string;
+  learningProfileText?: string;
   questionType?: string;
 };
 
@@ -83,7 +87,7 @@ type MaterialResult = {
 };
 
 type TurnActionResult = {
-  action: "next_question" | "show_card" | "show_chapter" | "hint" | "discuss" | "increase_difficulty" | "summary" | "exit";
+  action: "next_question" | "show_card" | "show_chapter" | "summary" | "exit";
 };
 
 const QuestionSchema = Type.Object({
@@ -118,6 +122,7 @@ const ArchiveSchema = Type.Object({
 
 const SummarySchema = Type.Object({
   session_id: Type.Optional(Type.String()),
+  subject_id: Type.Optional(Type.String()),
   report: Type.String(),
   scope: Type.Optional(Type.String()),
   total_questions: Type.Optional(Type.Number()),
@@ -157,6 +162,7 @@ const TurnActionSchema = Type.Object({
 
 const REVIEW_PANEL_BODY_LINES = 18;
 const REVIEW_INPUT_TITLE_LINES = 8;
+const DIFFICULTY_OPTIONS = ["", "S-R", "S-U", "M-U", "M-A", "C-A"];
 
 function clampScroll(scroll: number, totalLines: number, visibleLines: number) {
   return Math.max(0, Math.min(scroll, Math.max(0, totalLines - visibleLines)));
@@ -172,6 +178,19 @@ function renderWindowedLines(lines: string[], scroll: number, visibleLines = REV
   };
 }
 
+function wrapPlainLine(line: string, width: number) {
+  const max = Math.max(20, width - 2);
+  const raw = String(line ?? "");
+  if (raw.length <= max) return [raw];
+  const chunks = [];
+  for (let i = 0; i < raw.length; i += max) chunks.push(raw.slice(i, i + max));
+  return chunks;
+}
+
+function wrapPlainBlock(text: string, width: number) {
+  return String(text || "").split(/\r?\n/).flatMap((line) => wrapPlainLine(line, width));
+}
+
 function renderTruncatedBlock(text: string, width: number, maxLines = REVIEW_INPUT_TITLE_LINES) {
   const lines = String(text || "").split(/\r?\n/).map((line) => truncateToWidth(line, width));
   if (lines.length <= maxLines) return lines;
@@ -179,6 +198,65 @@ function renderTruncatedBlock(text: string, width: number, maxLines = REVIEW_INP
     ...lines.slice(0, Math.max(1, maxLines - 1)),
     truncateToWidth(`... 已省略 ${lines.length - maxLines + 1} 行`, width),
   ];
+}
+
+async function showScrollableTextPanel(
+  ctx: ExtensionContext,
+  title: string,
+  body: string,
+  footer: string,
+): Promise<"continue" | "exit"> {
+  if (!ctx.hasUI) return "continue";
+  return await ctx.ui.custom<"continue" | "exit">((tui, theme, _kb, done) => {
+    let cache: string[] | undefined;
+    let scroll = 0;
+    let totalLines = 0;
+    return {
+      render(width: number) {
+        if (cache) return cache;
+        const lines = [
+          theme.fg("accent", theme.bold(title)),
+          "",
+          ...wrapPlainBlock(body || "（无内容）", width),
+        ];
+        const windowed = renderWindowedLines(lines, scroll);
+        scroll = windowed.safeScroll;
+        totalLines = windowed.total;
+        const scrollHint = windowed.hasOverflow
+          ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
+          : "";
+        cache = [
+          theme.fg("accent", "─".repeat(width)),
+          ...windowed.visible,
+          "",
+          theme.fg("dim", `${footer}${scrollHint}`),
+          theme.fg("accent", "─".repeat(width)),
+        ].map((line) => truncateToWidth(line, width));
+        return cache;
+      },
+      invalidate() {
+        cache = undefined;
+      },
+      handleInput(data: string) {
+        if (matchesKey(data, Key.escape)) {
+          done("exit");
+          return;
+        }
+        if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
+          done("continue");
+          return;
+        }
+        if (isScrollUp(data)) {
+          scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
+        } else if (isScrollDown(data)) {
+          scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
+          cache = undefined;
+        }
+        tui.requestRender();
+      },
+    };
+  });
 }
 
 function isScrollUp(data: string) {
@@ -304,6 +382,9 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   })));
   if (!profileId) return null;
   const profile = loadProfile(profileId);
+  const learningProfileText = formatLearningProfileForPrompt(loadLearningProfile(profile?.subjectId || profileId));
+  const profileViewed = await showScrollableTextPanel(ctx, "学习画像", learningProfileText, "Enter 继续 • Esc 取消");
+  if (profileViewed === "exit") return null;
 
   const mode = await selectItem(ctx, "选择复习模式", REVIEW_MODES);
   if (!mode) return null;
@@ -315,7 +396,7 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   ]);
   if (!targetKind) return null;
 
-  const selection: ReviewSelection = { mode, profile };
+  const selection: ReviewSelection = { mode, profile, learningProfileText };
   if (targetKind === "chapter") {
     selection.chapterId = await selectItem(ctx, "选择章节", listChapters(profile)) || undefined;
     if (!selection.chapterId) return null;
@@ -338,6 +419,16 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
     { value: "short_answer", label: "简述题", description: "输入文字答案。" },
   ]);
   selection.questionType = type || undefined;
+  const difficulty = await selectItem(ctx, "选择难度", [
+    { value: "", label: "自动", description: "根据知识点基线和当前 session 表现选择。" },
+    { value: "S-R", label: "S-R 记忆识别", description: "直接记忆或术语识别。" },
+    { value: "S-U", label: "S-U 单概念理解", description: "理解并区分一个概念。" },
+    { value: "M-U", label: "M-U 多概念理解", description: "比较或连接 2-3 个概念。" },
+    { value: "M-A", label: "M-A 综合分析", description: "用多个概念分析场景。" },
+    { value: "C-A", label: "C-A 复杂分析", description: "形成完整分析链。" },
+  ]);
+  if (difficulty == null) return null;
+  selection.difficulty = DIFFICULTY_OPTIONS.includes(difficulty) && difficulty ? difficulty : undefined;
   return selection;
 }
 
@@ -396,12 +487,12 @@ function renderCardLines(card: any, width: number, theme: any) {
     if (!card.sections?.[key]) continue;
     used.add(key);
     lines.push(theme.fg("accent", theme.bold(key.replace(/^[^\p{L}\p{N}]+/u, ""))));
-    lines.push(...String(card.sections[key]).split(/\r?\n/));
+    lines.push(...wrapPlainBlock(String(card.sections[key]), width));
     lines.push("");
   }
 
   if (!used.size) {
-    lines.push(...String(card.raw || "").split(/\r?\n/).slice(0, 80));
+    lines.push(...wrapPlainBlock(String(card.raw || ""), width));
     lines.push("");
   }
 
@@ -464,11 +555,10 @@ async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promis
 }
 
 function renderMarkdownPanel(title: string, body: string, width: number, theme: any) {
-  const rawLines = String(body || "").split(/\r?\n/).slice(0, 120);
   return [
     theme.fg("accent", theme.bold(title)),
     "",
-    ...rawLines,
+    ...wrapPlainBlock(body || "", width),
   ].map((line) => truncateToWidth(line, width));
 }
 
@@ -532,9 +622,6 @@ async function chooseTurnAction(ctx: ExtensionContext): Promise<TurnActionResult
     { value: "next_question", label: "下一题", description: "继续当前范围。" },
     { value: "show_card", label: "看卡片", description: "查看当前知识点卡片。" },
     { value: "show_chapter", label: "看章节", description: "查看当前章节材料。" },
-    { value: "hint", label: "提示", description: "给方向，不公布答案。" },
-    { value: "discuss", label: "追问", description: "继续讨论本题。" },
-    { value: "increase_difficulty", label: "提高难度", description: "下一题提高一级难度。" },
     { value: "summary", label: "总结", description: "生成会话总结。" },
     { value: "exit", label: "退出", description: "结束本次复习。" },
   ]);
@@ -590,16 +677,16 @@ function buildFixPrompt(profile: any, feedback: string) {
 async function answerQuestion(ctx: ExtensionContext, rawQuestion: unknown): Promise<AnswerResult | null> {
   const q = normalizeQuestion(rawQuestion);
   if (!ctx.hasUI) return { answer: "", action: "cancel" };
+  const questionBody = [
+    q.question_text,
+    "",
+    ...q.options.map((option, index) => `${String.fromCharCode(65 + index)}. ${option}`),
+  ].join("\n");
+  const viewed = await showScrollableTextPanel(ctx, "题目", questionBody, "Enter 作答 • Esc 取消");
+  if (viewed === "exit") return { answer: "", action: "cancel" };
 
   if (q.type === "multi_choice") {
-    const prompt = [
-      q.question_text,
-      "",
-      ...q.options.map((option, index) => `${String.fromCharCode(65 + index)}. ${option}`),
-      "",
-      "输入多个选项字母，例如 AB 或 B,D。",
-    ].join("\n");
-    const answer = await textInput(ctx, prompt);
+    const answer = await textInput(ctx, "输入多个选项字母，例如 AB 或 B,D。");
     if (!answer) return { answer: "", action: "cancel" };
     return { answer: parseChoiceAnswer(answer, q), action: "answer" };
   }
@@ -610,13 +697,15 @@ async function answerQuestion(ctx: ExtensionContext, rawQuestion: unknown): Prom
       label: q.type === "judgment" ? option : `${String.fromCharCode(65 + index)}. ${option}`,
       description: "",
     }));
-    const selected = await selectItem(ctx, q.question_text, options);
+    const selected = await selectItem(ctx, "选择答案", options);
     if (!selected) return { answer: "", action: "cancel" };
     return { answer: q.type === "choice" ? parseChoiceAnswer(selected, q) : selected, action: "answer" };
   }
 
-  const answer = await textInput(ctx, q.question_text);
+  const answer = await textInput(ctx, "输入你的答案。也可以输入“提示”或“追问：...”让 agent 在判题前继续帮助你。");
   if (!answer) return { answer: "", action: "cancel" };
+  if (/^提示$|^hint$/i.test(answer)) return { answer: "", action: "hint" };
+  if (/^追问[:：]/.test(answer) || /^discuss[:：]/i.test(answer)) return { answer, action: "discuss" };
   return { answer, action: "answer" };
 }
 
@@ -700,7 +789,12 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       }
 
       const target = resolveReviewTarget(selection, selection.profile);
-      initSession(target.scope, target.kpIds);
+      initSession(target.scope, target.kpIds, {
+        mode: selection.mode,
+        profile_id: selection.profile?.subjectId || "",
+        difficulty_policy: selection.difficulty || "auto",
+        question_type_policy: selection.questionType || "auto",
+      });
       const progress = loadProgress();
       const sid = progress.current_session?.session_id || "";
       const courseName = selection.profile?.name || config.courseName;
@@ -881,7 +975,6 @@ export default function reviewExtension(pi: ExtensionAPI): void {
     parameters: TurnActionSchema,
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const result = await chooseTurnAction(ctx);
-      if (result.action === "increase_difficulty") updateSession({ _next_difficulty_up: true });
       return {
         content: [{ type: "text", text: `review_turn_action action=${result.action}` }],
         details: result,
@@ -907,6 +1000,12 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: "User cancelled the question." }],
           details: { answer: "", action: "cancel" },
+        };
+      }
+      if (result.action !== "answer") {
+        return {
+          content: [{ type: "text", text: `User requested ${result.action}: ${result.answer}` }],
+          details: result,
         };
       }
       return {
@@ -969,6 +1068,16 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         total_questions: params.total_questions ?? active?.total_questions,
         correct: params.correct ?? active?.correct,
         incorrect: params.incorrect ?? active?.incorrect,
+      });
+      const subjectId = params.subject_id || active?.profile_id || "default";
+      updateLearningProfileFromSummary(subjectId, {
+        session_id: sessionId,
+        report: params.report,
+        scope: params.scope || active?.scope,
+        total_questions: params.total_questions ?? active?.total_questions,
+        correct: params.correct ?? active?.correct,
+        incorrect: params.incorrect ?? active?.incorrect,
+        summary_path: path,
       });
       updateSession({ last_action: "summary_saved", summary_path: path });
       if (params.end_session && active?.session_id === sessionId) {

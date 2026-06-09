@@ -89,7 +89,7 @@ workspace/
 
 | 命令 | 触发 | 流程 |
 |------|------|------|
-| `/review` | 用户输入 | TUI 选择 profile → 模式 → 范围 → 题型 → 发送 prompt 给 agent |
+| `/review` | 用户输入 | TUI 选择 profile → 展示学习画像 → 模式 → 范围 → 题型 → 难度 → 发送 prompt 给 agent |
 | `/review-init` | 用户输入 | 输入源目录和科目名 → 创建 draft profile → 发送 init prompt 给 agent |
 | `/review-fix` | 用户输入 | 选择 profile → 输入反馈 → active 则先创建 revision draft → 发送 fix prompt 给 agent |
 
@@ -102,10 +102,10 @@ workspace/
 | `review_card` | 模式 1 出题前 | 在 TUI 中渲染知识点卡片，返回 `practice/next_card/skip/exit` |
 | `review_exam_points` | 模式 2 出题前 | 渲染章节考点总结，返回 `practice/skip/exit` |
 | `review_chapter` | 模式 3 出题前 | 渲染章节或小节材料，返回 `practice/next_section/skip/exit` |
-| `review_answer` | 出题后 | 渲染结构化题目并收集用户答案 |
+| `review_answer` | 出题后 | 滚动渲染完整结构化题目并收集用户答案，答题中可请求提示/追问 |
 | `review_archive` | 判题+讨论后 | 归档题目答案，更新进度/错题本/知识链 |
-| `review_turn_action` | 归档后**必须**调用 | 显示统一题后菜单（下一题/看卡片/看章节/提示/追问/提高难度/总结/退出） |
-| `review_summary` | 用户要求总结时 | 保存 session 总结报告 |
+| `review_turn_action` | 归档后**必须**调用 | 显示题后续航菜单（下一题/看卡片/看章节/总结/退出） |
+| `review_summary` | 用户要求总结时 | 保存 session 总结报告，并更新该科目的学习画像 |
 | `review_profile_write` | 初始化/修订时 | 安全写入 draft profile 文件（拒绝非 draft） |
 | `review_profile_enable` | 用户确认启用时 | 将 draft 切换为 active（替换 active 时归档原版） |
 
@@ -124,7 +124,7 @@ review_card 返回:
   { action: "practice" | "next_card" | "skip" | "exit", knowledge_point_id, card_found }
 
 review_turn_action 返回:
-  { action: "next_question" | "show_card" | "show_chapter" | "hint" | "discuss" | "increase_difficulty" | "summary" | "exit" }
+  { action: "next_question" | "show_card" | "show_chapter" | "summary" | "exit" }
 ```
 
 ---
@@ -135,9 +135,9 @@ review_turn_action 返回:
 
 | 模式 | ID | 前置代码工具 | 流程 |
 |------|-----|-------------|------|
-| 概念卡片+练习 | `card_practice` | `review_card` | 卡片展示 → 生成题目 → `review_answer` → 判题 → 讨论 → `review_archive` → `review_turn_action` |
-| 直接练习 | `practice` | `review_exam_points`（有章节时） | 考点展示 → 出题 → 判题 → 归档 → 题后菜单 |
-| 章节笔记学习 | `chapter_study` | `review_chapter` | 材料展示 → 出题 → 判题 → 归档 → 题后菜单 |
+| 概念卡片+练习 | `card_practice` | `review_card` | 卡片展示 → 生成题目 → `review_answer` → 判题 → 讨论 → `review_archive` → 题后续航菜单 |
+| 直接练习 | `practice` | `review_exam_points`（有章节时） | 考点展示 → 出题 → 判题 → 归档 → 题后续航菜单 |
+| 章节笔记学习 | `chapter_study` | `review_chapter` | 材料展示 → 出题 → 判题 → 归档 → 题后续航菜单 |
 
 ### 3.2 单题生命周期 (agent 视角)
 
@@ -145,11 +145,11 @@ review_turn_action 返回:
 1. Read profile 资料 (subject.md, knowledge_index.json)
 2. 按模式调用前置代码工具 (review_card / review_exam_points / review_chapter)
 3. 返回 practice → 参考 review-question 生成一题结构化 JSON
-4. 调用 review_answer → TUI 渲染 → 用户作答
+4. 调用 review_answer → TUI 滚动渲染完整题目 → 用户作答或请求提示/追问
 5. 参考 review-grade 判题 + L1 解析
 6. 可选讨论 (参考 review-discuss)
 7. 调用 review_archive 归档
-8. 调用 review_turn_action 获取下一步
+8. 调用 review_turn_action 获取下一步续航动作
 9. 循环或退出
 ```
 
@@ -237,8 +237,8 @@ review_profiles/{subject_id}/
 
 ### 5.3 难度自适应
 
-- 自动: 正确率 ≥80% 升级，<50% 降级
-- 手动: 题后菜单选择「提高难度」或 agent 调用 `review_turn_action: increase_difficulty`
+- 自动: 开局选择“自动”后，按知识点基线和 session 正确率动态选择
+- 手动: 开局直接选择 `S-R`、`S-U`、`M-U`、`M-A` 或 `C-A`
 - 基线: 每个知识点有 `difficulty_baseline`
 
 ---
@@ -253,6 +253,7 @@ review_profiles/{subject_id}/
 | `wrong_book.json` | 错题记录 + 错误类型统计 |
 | `knowledge_chains.json` | 跨知识点关联 |
 | `card_progress.json` | 卡片 seen/practice/correct 统计 |
+| `learning_profiles/{subject_id}.json` | 每个科目的长期学习画像，由 summaries/session/wrong book 更新 |
 
 ### 6.2 归档结构 (archive/)
 
@@ -264,6 +265,8 @@ archive/
 └── summaries/
     └── {session_id}_总结.md   # session meta-复盘
 ```
+
+`summaries/` 是历史原始报告；`learning_profiles/` 是从历史报告和错题状态提炼出的用户私有索引。它不会写入 profile，也不会自动修改资料包；如需优化资料包，仍通过 `/review-fix` 创建 draft。
 
 ### 6.3 知识点索引 (data/knowledge_index.json)
 

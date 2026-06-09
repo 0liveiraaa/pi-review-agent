@@ -16,6 +16,7 @@ export const DATA_DIR = join(WORKSPACE, "data");
 export const ARCHIVE_DIR = reviewConfig.archiveDirAbs;
 export const SESSION_ARCHIVE_DIR = join(ARCHIVE_DIR, "sessions");
 export const SUMMARY_DIR = join(ARCHIVE_DIR, "summaries");
+export const LEARNING_PROFILE_DIR = join(STATE_DIR, "learning_profiles");
 
 const PROGRESS_FILE = join(STATE_DIR, "progress.json");
 const WRONG_BOOK_FILE = join(STATE_DIR, "wrong_book.json");
@@ -78,13 +79,16 @@ export function saveProgress(data) {
 }
 
 // ─── 会话 ───
-export function initSession(scope, kpIds) {
+export function initSession(scope, kpIds, meta = {}) {
   const progress = loadProgress();
   const session = {
     session_id: `s_${timestampNow().replace(/[:.]/g, "-")}`,
     started: timestampNow(),
     scope,
-    mode: "quiz",
+    mode: meta.mode || "quiz",
+    profile_id: meta.profile_id || meta.subject_id || "",
+    difficulty_policy: meta.difficulty_policy || "auto",
+    question_type_policy: meta.question_type_policy || "auto",
     total_questions: 0,
     correct: 0,
     incorrect: 0,
@@ -211,6 +215,123 @@ export function getRecentWeaknesses(limit = 3) {
     for (const kp of e.knowledge_points || []) kps.add(kp);
   }
   return [...kps];
+}
+
+// ─── 学习画像 ───
+function safeSubjectId(subjectId) {
+  return String(subjectId || "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+function learningProfilePath(subjectId) {
+  return join(LEARNING_PROFILE_DIR, `${safeSubjectId(subjectId)}.json`);
+}
+
+function defaultLearningProfile(subjectId) {
+  return {
+    subject_id: subjectId || "default",
+    recent_sessions: [],
+    accuracy: null,
+    weak_points: [],
+    error_types: {},
+    lingering_questions: [],
+    next_suggestions: [],
+    updated_at: null,
+  };
+}
+
+function uniqueRecent(items, limit = 8) {
+  return [...new Set((items || []).map((item) => String(item || "").trim()).filter(Boolean))].slice(0, limit);
+}
+
+function extractReportLines(report, patterns, limit = 5) {
+  const lines = String(report || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*#\s]+/, "").trim())
+    .filter(Boolean);
+  return uniqueRecent(lines.filter((line) => patterns.some((pattern) => pattern.test(line))), limit);
+}
+
+export function loadLearningProfile(subjectId) {
+  const path = learningProfilePath(subjectId);
+  if (!existsSync(path)) return defaultLearningProfile(subjectId);
+  return { ...defaultLearningProfile(subjectId), ...loadJSON(path) };
+}
+
+export function saveLearningProfile(subjectId, profile) {
+  const next = { ...defaultLearningProfile(subjectId), ...profile, subject_id: subjectId || profile.subject_id || "default" };
+  saveJSON(learningProfilePath(subjectId), next);
+  return next;
+}
+
+export function updateLearningProfileFromSummary(subjectId, summary = {}) {
+  const sid = subjectId || "default";
+  const current = loadLearningProfile(sid);
+  const report = String(summary.report || "");
+  const total = Number(summary.total_questions ?? 0);
+  const correct = Number(summary.correct ?? 0);
+  const incorrect = Number(summary.incorrect ?? 0);
+  const sessionEntry = {
+    session_id: summary.session_id || `s_${Date.now()}`,
+    date: dateStr(),
+    scope: summary.scope || "",
+    total_questions: total,
+    correct,
+    incorrect,
+    summary_path: summary.summary_path || "",
+  };
+
+  const recentSessions = [
+    sessionEntry,
+    ...(current.recent_sessions || []).filter((item) => item.session_id !== sessionEntry.session_id),
+  ].slice(0, 10);
+  const answered = recentSessions.reduce((sum, item) => sum + Number(item.total_questions || 0), 0);
+  const correctTotal = recentSessions.reduce((sum, item) => sum + Number(item.correct || 0), 0);
+  const wrongBook = loadWrongBook();
+  const recentWrong = wrongBook.entries.slice(-20);
+  const weakPoints = uniqueRecent([
+    ...recentWrong.flatMap((entry) => entry.knowledge_points || []),
+    ...extractReportLines(report, [/薄弱|错误|混淆|遗漏|待复习|不熟/], 5),
+  ], 10);
+  const lingering = uniqueRecent([
+    ...(current.lingering_questions || []),
+    ...extractReportLines(report, [/遗留|疑问|问题|追问/], 5),
+  ], 8);
+  const suggestions = uniqueRecent([
+    ...extractReportLines(report, [/建议|下一步|下次|继续|优先/], 6),
+    ...(current.next_suggestions || []),
+  ], 8);
+
+  return saveLearningProfile(sid, {
+    ...current,
+    recent_sessions: recentSessions,
+    accuracy: answered > 0 ? correctTotal / answered : current.accuracy,
+    weak_points: weakPoints,
+    error_types: wrongBook.error_type_stats || {},
+    lingering_questions: lingering,
+    next_suggestions: suggestions,
+    updated_at: timestampNow(),
+  });
+}
+
+export function formatLearningProfileForPrompt(profile) {
+  if (!profile?.updated_at || !(profile.recent_sessions || []).length) {
+    return "暂无该科目的历史学习画像。请按当前资料和用户选择开始，不要臆造历史薄弱点。";
+  }
+  const accuracy = typeof profile.accuracy === "number" ? `${Math.round(profile.accuracy * 100)}%` : "未知";
+  const recent = (profile.recent_sessions || []).slice(0, 3)
+    .map((item) => `- ${item.date || ""} ${item.scope || ""}: ${item.correct || 0}/${item.total_questions || 0}`)
+    .join("\n") || "- 无";
+  const weak = (profile.weak_points || []).slice(0, 8).join("、") || "暂无";
+  const lingering = (profile.lingering_questions || []).slice(0, 5).join("；") || "暂无";
+  const suggestions = (profile.next_suggestions || []).slice(0, 5).join("；") || "暂无";
+  return [
+    `最近综合正确率: ${accuracy}`,
+    "最近会话:",
+    recent,
+    `薄弱点: ${weak}`,
+    `遗留问题: ${lingering}`,
+    `下次建议: ${suggestions}`,
+  ].join("\n");
 }
 
 // ─── 知识链 ───

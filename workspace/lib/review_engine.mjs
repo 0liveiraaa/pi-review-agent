@@ -1,5 +1,13 @@
 import { readFileSync } from "node:fs";
-import { loadKnowledgeIndex, getKpIdsForScope, selectDifficulty, selectQuestionType, loadProgress } from "./state.mjs";
+import {
+  loadKnowledgeIndex,
+  getKpIdsForScope,
+  selectDifficulty,
+  selectQuestionType,
+  loadProgress,
+  loadLearningProfile,
+  formatLearningProfileForPrompt,
+} from "./state.mjs";
 import { getChapterSections, getChapterSectionsFromDir } from "./chapters.mjs";
 import { buildQuestionPrompt } from "./review_question.mjs";
 
@@ -22,10 +30,9 @@ export const REVIEW_MODES = [
 ];
 
 export const POST_TURN_ACTIONS = [
-  { value: "next", label: "下一题", description: "继续当前范围。" },
-  { value: "skip", label: "跳过", description: "不归档当前题，继续下一个知识点。" },
-  { value: "hint", label: "提示", description: "让 agent 给出方向，不直接公布答案。" },
-  { value: "harder", label: "提高难度", description: "下一题提升一个难度等级。" },
+  { value: "next_question", label: "下一题", description: "继续当前范围。" },
+  { value: "show_card", label: "看卡片", description: "查看当前知识点卡片。" },
+  { value: "show_chapter", label: "看章节", description: "查看当前章节材料。" },
   { value: "summary", label: "总结", description: "生成本次复习总结。" },
   { value: "exit", label: "退出", description: "结束当前复习。" },
 ];
@@ -147,8 +154,11 @@ export function buildReviewStartPrompt(selection, config) {
   const target = resolveReviewTarget(selection, selection.profile);
   const progress = loadProgress();
   const session = progress.current_session || {};
+  const difficultyPolicy = selection.difficulty ? "manual" : "auto";
   const difficulty = selection.difficulty || selectDifficulty({ difficulty_baseline: config.defaultDifficulty }, session);
   const qType = selection.questionType || selectQuestionType({ question_types: ["choice", "judgment", "short_answer"] });
+  const learningProfile = selection.learningProfileText
+    || formatLearningProfileForPrompt(loadLearningProfile(selection.profile?.subjectId || config.profile || "default"));
 
   return buildQuestionPrompt({
     mode: selection.mode,
@@ -156,7 +166,9 @@ export function buildReviewStartPrompt(selection, config) {
     chapter: target.chapter,
     knowledgePoint: selection.knowledgePointLabel || "",
     difficulty,
+    difficultyPolicy,
     questionType: qType,
+    learningProfile,
     courseName: config.courseName,
     subjectPath: selection.profile?.subjectPath,
     knowledgeIndexPath: selection.profile?.knowledgeIndexPath,

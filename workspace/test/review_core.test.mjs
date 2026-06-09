@@ -10,7 +10,14 @@ import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs
 import { loadReviewConfig, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
 import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
-import { loadCardProgress, markCardSeen, updateCardPractice } from "../lib/state.mjs";
+import {
+  LEARNING_PROFILE_DIR,
+  loadCardProgress,
+  loadLearningProfile,
+  markCardSeen,
+  updateCardPractice,
+  updateLearningProfileFromSummary,
+} from "../lib/state.mjs";
 import {
   assertValidProfileShape,
   createDraftProfile,
@@ -209,6 +216,12 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(prompt, /\/skill:review-grade/);
   assert.doesNotMatch(prompt, /必须先调用 review_card/);
   assert.match(prompt, /review_exam_points/);
+  assert.match(prompt, /学习者画像/);
+  assert.match(prompt, /难度策略: 自动/);
+
+  const manualPrompt = buildReviewStartPrompt({ mode: "practice", chapterId: "1", profile, difficulty: "M-U" }, loadReviewConfig());
+  assert.match(manualPrompt, /难度: M-U/);
+  assert.match(manualPrompt, /难度策略: 手动/);
 
   const cardPrompt = buildReviewStartPrompt({ mode: "card_practice", chapterId: "1", profile }, loadReviewConfig());
   assert.match(cardPrompt, /必须先调用 review_card/);
@@ -221,6 +234,7 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(extensionSource, /\/skill:review-init/);
   assert.match(extensionSource, /\/skill:review-fix/);
   assert.match(extensionSource, /injectReviewCore/);
+  assert.doesNotMatch(extensionSource, /increase_difficulty/);
 });
 
 test("workspace pi config does not auto-load a global review SYSTEM prompt", () => {
@@ -302,6 +316,33 @@ test("card progress records seen and practice statistics", () => {
   } finally {
     if (hadFile) writeFileSync(progressPath, original, "utf-8");
     else rmSync(progressPath, { force: true });
+  }
+});
+
+test("summary updates subject learning profile", () => {
+  const subjectId = "unit-learning-profile";
+  const profilePath = join(LEARNING_PROFILE_DIR, `${subjectId}.json`);
+  const hadFile = existsSync(profilePath);
+  const original = hadFile ? readFileSync(profilePath, "utf-8") : null;
+  try {
+    updateLearningProfileFromSummary(subjectId, {
+      session_id: "s_unit_learning",
+      report: "薄弱点：主动回忆容易遗漏。\n下一步建议：优先复习错题相关卡片。\n遗留问题：如何安排间隔复习？",
+      scope: "第1章",
+      total_questions: 2,
+      correct: 1,
+      incorrect: 1,
+      summary_path: "archive/summaries/s_unit_learning_总结.md",
+    });
+    const profile = loadLearningProfile(subjectId);
+    assert.equal(profile.subject_id, subjectId);
+    assert.equal(profile.recent_sessions[0].session_id, "s_unit_learning");
+    assert.equal(profile.accuracy, 0.5);
+    assert.ok(profile.weak_points.some((item) => item.includes("主动回忆")));
+    assert.ok(profile.next_suggestions.some((item) => item.includes("优先复习")));
+  } finally {
+    if (hadFile) writeFileSync(profilePath, original, "utf-8");
+    else rmSync(profilePath, { force: true });
   }
 });
 
