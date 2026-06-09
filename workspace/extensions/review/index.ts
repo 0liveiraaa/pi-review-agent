@@ -349,6 +349,59 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
   });
 }
 
+async function selectOptionWithHeader(
+  ctx: ExtensionContext,
+  title: string,
+  headerLines: string[],
+  items: SelectItem[],
+): Promise<string | null> {
+  if (!ctx.hasUI) return items[0]?.value ?? null;
+  if (items.length === 0) return null;
+
+  return await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+    let closed = false;
+    function finish(value: string | null) {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
+    const container = new Container();
+    container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+    container.addChild(new Text(theme.fg("accent", theme.bold(title))));
+    if (headerLines.length > 0) {
+      container.addChild(new Text(""));
+      for (const line of headerLines) {
+        container.addChild(new Text(theme.fg("muted", line)));
+      }
+      container.addChild(new Text(theme.fg("dim", "─".repeat(20))));
+    }
+
+    const list = new SelectList(items, Math.min(items.length, 10), {
+      selectedPrefix: (s) => theme.fg("accent", s),
+      selectedText: (s) => theme.fg("accent", s),
+      description: (s) => theme.fg("muted", s),
+      scrollInfo: (s) => theme.fg("dim", s),
+      noMatch: (s) => theme.fg("warning", s),
+    });
+    list.onSelect = (item) => finish(item.value);
+    list.onCancel = () => finish(null);
+    container.addChild(list);
+    container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel")));
+    container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+
+    return {
+      render: (width: number) => container.render(width),
+      invalidate: () => container.invalidate(),
+      handleInput: (data: string) => {
+        if (closed) return;
+        list.handleInput(data);
+        tui.requestRender();
+      },
+    };
+  });
+}
+
 async function textInput(ctx: ExtensionContext, title: string, initial = ""): Promise<string | null> {
   if (!ctx.hasUI) return initial || null;
   return await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
@@ -421,9 +474,14 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   })));
   if (!profileId) return null;
   const profile = loadProfile(profileId);
-  const learningProfileText = formatLearningProfileForPrompt(loadLearningProfile(profile?.subjectId || profileId));
-  const profileViewed = await showScrollableTextPanel(ctx, "学习画像", learningProfileText, "Enter 继续 • Esc 取消");
-  if (profileViewed === "exit") return null;
+  const lp = loadLearningProfile(profile?.subjectId || profileId);
+  const learningProfileText = formatLearningProfileForPrompt(lp);
+  const hasProfileHistory = lp?.updated_at != null && (lp.recent_sessions || []).length > 0;
+  if (hasProfileHistory) {
+    const accuracy = typeof lp.accuracy === "number" ? `${Math.round(lp.accuracy * 100)}%` : "未知";
+    const weak = (lp.weak_points || []).slice(0, 3).join("、") || "暂无记录";
+    ctx.ui.notify(`📊 学习画像: 正确率 ${accuracy}，薄弱点 ${weak}`, "info");
+  }
 
   const mode = await selectItem(ctx, "选择复习模式", REVIEW_MODES);
   if (!mode) return null;
@@ -800,7 +858,8 @@ async function answerQuestion(ctx: ExtensionContext, rawQuestion: unknown): Prom
       label: q.type === "judgment" ? option : `${String.fromCharCode(65 + index)}. ${option}`,
       description: "",
     }));
-    const selected = await selectItem(ctx, "选择答案", options);
+    const headerLines = q.question_text.split("\n").slice(0, 3).filter(Boolean);
+    const selected = await selectOptionWithHeader(ctx, "选择答案", headerLines, options);
     if (!selected) return { answer: "", action: "cancel" };
     return { answer: q.type === "choice" ? parseChoiceAnswer(selected, q) : selected, action: "answer" };
   }
@@ -986,8 +1045,14 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       if (!card) {
         result.path = `${profile.cardsDir}/${queued.id || queued.name}.md`;
       }
+      const cardActionText: Record<string, string> = {
+        practice: "User chose to practice this card. Generate one question and call review_answer.",
+        next_card: "User chose next card. Select the next related knowledge point and call review_card again. Do NOT generate a question yet.",
+        skip: "User skipped this card. Choose another target or ask the user what to do next.",
+        exit: "User exited card review. Ask whether to generate a session summary or stop.",
+      };
       return {
-        content: [{ type: "text", text: `review_card action=${result.action} card_found=${result.card_found} position=${result.position || ""}/${result.total || ""}` }],
+        content: [{ type: "text", text: `review_card: ${cardActionText[result.action] || result.action}` }],
         details: result,
       };
     },
@@ -1017,8 +1082,13 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       const body = docs?.map((doc: any) => doc.content).join("\n\n---\n\n") || "";
       const path = docs?.map((doc: any) => doc.path).join("; ");
       const result = await showMaterialPanel(ctx, `考点总结 ${params.chapter_id || ""}`.trim(), body, path);
+      const examPointsActionText: Record<string, string> = {
+        practice: "User viewed exam points and chose to practice. Generate a question and call review_answer.",
+        skip: "User skipped exam points. Choose another target or ask the user.",
+        exit: "User exited. Ask whether to generate a session summary or stop.",
+      };
       return {
-        content: [{ type: "text", text: `review_exam_points action=${result.action} found=${result.found}` }],
+        content: [{ type: "text", text: `review_exam_points: ${examPointsActionText[result.action] || result.action}` }],
         details: result,
       };
     },
@@ -1057,8 +1127,14 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         : "");
       const material = loadChapterMaterial(profile, { chapterId: params.chapter_id || "", sectionPath: selectedPath || "" });
       const result = await showMaterialPanel(ctx, material?.title || `章节材料 ${params.chapter_id || ""}`.trim(), material?.content || "", material?.path);
+      const chapterActionText: Record<string, string> = {
+        practice: "User viewed chapter material and chose to practice. Generate a question and call review_answer.",
+        next_section: "User chose next section. Select the next section and call review_chapter again. Do NOT generate a question yet.",
+        skip: "User skipped this section. Choose another target or ask the user.",
+        exit: "User exited chapter study. Ask whether to generate a session summary or stop.",
+      };
       return {
-        content: [{ type: "text", text: `review_chapter action=${result.action} found=${result.found}` }],
+        content: [{ type: "text", text: `review_chapter: ${chapterActionText[result.action] || result.action}` }],
         details: result,
       };
     },
