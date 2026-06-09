@@ -342,6 +342,7 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
       handleInput: (data: string) => {
         if (closed) return;
         list.handleInput(data);
+        if (closed) return;
         tui.requestRender();
       },
     };
@@ -399,8 +400,8 @@ async function textInput(ctx: ExtensionContext, title: string, initial = ""): Pr
           return;
         }
         editor.handleInput(data);
+        if (closed) return;
         renderCache = undefined;
-        tui.requestRender();
       },
     };
   });
