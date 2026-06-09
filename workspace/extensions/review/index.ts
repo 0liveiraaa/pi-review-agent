@@ -200,6 +200,12 @@ function renderTruncatedBlock(text: string, width: number, maxLines = REVIEW_INP
   ];
 }
 
+function compactInlineText(text: string, limit = 80) {
+  const oneLine = String(text || "").replace(/\s+/g, " ").trim();
+  if (oneLine.length <= limit) return oneLine;
+  return `${oneLine.slice(0, Math.max(0, limit - 1))}…`;
+}
+
 async function showScrollableTextPanel(
   ctx: ExtensionContext,
   title: string,
@@ -1193,8 +1199,20 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme) {
-      const q = args.question?.question_text || "Review question";
-      return new Text(theme.fg("toolTitle", theme.bold("review_answer ")) + theme.fg("muted", q), 0, 0);
+      const question = args.question || {};
+      const meta = [
+        question.type || "question",
+        question.difficulty,
+        Array.isArray(question.knowledge_points) && question.knowledge_points.length
+          ? `kp:${question.knowledge_points.slice(0, 3).join(",")}`
+          : "",
+      ].filter(Boolean).join(" ");
+      const summary = compactInlineText(question.question_text || "Review question", 64);
+      return new Text(
+        theme.fg("toolTitle", theme.bold("review_answer ")) + theme.fg("muted", `${meta} ${summary}`.trim()),
+        0,
+        0,
+      );
     },
     renderResult(result, _options, theme) {
       const details = result.details as AnswerResult | undefined;

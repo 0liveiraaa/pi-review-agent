@@ -138,11 +138,12 @@ export function buildQuestionPrompt({
     ...chapterStudyLines,
     "流程要求:",
     "1. 先使用 Read 工具读取科目元描述和相关参考资料或历史归档。",
-    "2. 生成一道题，并只用 JSON 表示题目对象，字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1/source_basis。",
-    "3. 调用 review_answer 工具展示题目并收集用户答案；如果用户在答题中请求提示或追问，先回应其请求，不要直接判题。",
-    "4. 使用 review-grade 的规则判题，输出 Level 1 解析。",
-    "5. 讨论完成后调用 review_archive 工具保存结构化复盘。",
-    "6. review_archive 完成后必须调用 review_turn_action 工具，获取下一步续航动作。",
-    "7. 如果用户要求总结或结束本次复习，必须调用 review_summary 工具保存会话总结报告。",
+    "2. 生成一道题，并把结构化 Question JSON 直接作为 review_answer 工具参数；不要先在主对话区可见输出完整题目 JSON 或长题干。",
+    "3. Question JSON 字段必须包含 type/question_text/options/correct_answer/knowledge_points/difficulty/explanation_l1/source_basis。",
+    "4. 调用 review_answer 工具展示题目并收集用户答案；如果用户在答题中请求提示或追问，先回应其请求，不要直接判题。",
+    "5. 使用 review-grade 的规则判题，输出 Level 1 解析。",
+    "6. 讨论完成后调用 review_archive 工具保存结构化复盘。",
+    "7. review_archive 完成后必须调用 review_turn_action 工具，获取下一步续航动作。",
+    "8. 如果用户要求总结或结束本次复习，必须调用 review_summary 工具保存会话总结报告。",
   ].filter(Boolean).join("\n");
 }
