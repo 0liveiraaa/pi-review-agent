@@ -208,52 +208,73 @@ async function showScrollableTextPanel(
 ): Promise<"continue" | "exit"> {
   if (!ctx.hasUI) return "continue";
   return await ctx.ui.custom<"continue" | "exit">((tui, theme, _kb, done) => {
-    let cache: string[] | undefined;
+    let closed = false;
+    function finish(value: "continue" | "exit") {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
     let scroll = 0;
     let totalLines = 0;
+    let lastWidth = 0;
+    let wrappedLines: string[] = [];
+    let renderCache: string[] | undefined;
+
+    function ensureWrapped(width: number) {
+      if (lastWidth === width && wrappedLines.length > 0) return;
+      wrappedLines = [
+        theme.fg("accent", theme.bold(title)),
+        "",
+        ...wrapPlainBlock(body || "（无内容）", width),
+      ];
+      totalLines = wrappedLines.length;
+      scroll = clampScroll(scroll, totalLines, REVIEW_PANEL_BODY_LINES);
+      lastWidth = width;
+      renderCache = undefined;
+    }
+
     return {
       render(width: number) {
-        if (cache) return cache;
-        const lines = [
-          theme.fg("accent", theme.bold(title)),
-          "",
-          ...wrapPlainBlock(body || "（无内容）", width),
-        ];
-        const windowed = renderWindowedLines(lines, scroll);
-        scroll = windowed.safeScroll;
-        totalLines = windowed.total;
+        if (closed) return [];
+        ensureWrapped(width);
+        if (renderCache) return renderCache;
+        const windowed = renderWindowedLines(wrappedLines, scroll);
         const scrollHint = windowed.hasOverflow
           ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
           : "";
-        cache = [
+        renderCache = [
           theme.fg("accent", "─".repeat(width)),
           ...windowed.visible,
           "",
           theme.fg("dim", `${footer}${scrollHint}`),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
-        return cache;
+        return renderCache;
       },
       invalidate() {
-        cache = undefined;
+        renderCache = undefined;
       },
       handleInput(data: string) {
+        if (closed) return;
         if (matchesKey(data, Key.escape)) {
-          done("exit");
+          finish("exit");
           return;
         }
         if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
-          done("continue");
+          finish("continue");
           return;
         }
+        const prevScroll = scroll;
         if (isScrollUp(data)) {
           scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         } else if (isScrollDown(data)) {
           scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         }
-        tui.requestRender();
+        if (scroll !== prevScroll) {
+          renderCache = undefined;
+          tui.requestRender();
+        }
       },
     };
   });
@@ -291,6 +312,13 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
   if (items.length === 0) return null;
 
   return await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+    let closed = false;
+    function finish(value: string | null) {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
     const container = new Container();
     container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
     container.addChild(new Text(theme.fg("accent", theme.bold(title))));
@@ -302,8 +330,8 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
       scrollInfo: (s) => theme.fg("dim", s),
       noMatch: (s) => theme.fg("warning", s),
     });
-    list.onSelect = (item) => done(item.value);
-    list.onCancel = () => done(null);
+    list.onSelect = (item) => finish(item.value);
+    list.onCancel = () => finish(null);
     container.addChild(list);
     container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel")));
     container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
@@ -312,6 +340,7 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
       render: (width: number) => container.render(width),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
+        if (closed) return;
         list.handleInput(data);
         tui.requestRender();
       },
@@ -322,6 +351,13 @@ async function selectItem(ctx: ExtensionContext, title: string, items: SelectIte
 async function textInput(ctx: ExtensionContext, title: string, initial = ""): Promise<string | null> {
   if (!ctx.hasUI) return initial || null;
   return await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+    let closed = false;
+    function finish(value: string | null) {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
     const editor = new Editor(tui, {
       borderColor: (s) => theme.fg("accent", s),
       selectList: {
@@ -333,13 +369,14 @@ async function textInput(ctx: ExtensionContext, title: string, initial = ""): Pr
       },
     });
     editor.setText(initial);
-    editor.onSubmit = (value) => done(value.trim() || null);
-    let cache: string[] | undefined;
+    editor.onSubmit = (value) => finish(value.trim() || null);
+    let renderCache: string[] | undefined;
 
     return {
       render(width: number) {
-        if (cache) return cache;
-        cache = [
+        if (closed) return [];
+        if (renderCache) return renderCache;
+        renderCache = [
           theme.fg("accent", "─".repeat(width)),
           ...renderTruncatedBlock(title, width).map((line, index) => (
             index === 0 ? theme.fg("accent", theme.bold(line)) : theme.fg("muted", line)
@@ -350,18 +387,19 @@ async function textInput(ctx: ExtensionContext, title: string, initial = ""): Pr
           theme.fg("dim", "Enter submit • Esc cancel"),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
-        return cache;
+        return renderCache;
       },
       invalidate() {
-        cache = undefined;
+        renderCache = undefined;
       },
       handleInput(data: string) {
+        if (closed) return;
         if (matchesKey(data, Key.escape)) {
-          done(null);
+          finish(null);
           return;
         }
         editor.handleInput(data);
-        cache = undefined;
+        renderCache = undefined;
         tui.requestRender();
       },
     };
@@ -502,53 +540,85 @@ function renderCardLines(card: any, width: number, theme: any) {
 async function showReviewCard(ctx: ExtensionContext, card: any, kp: any): Promise<CardResult> {
   markCardSeen(kp?.id || "");
   if (!ctx.hasUI) return { action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total };
+  const cardResultBase = { knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total };
   return await ctx.ui.custom<CardResult>((tui, theme, _kb, done) => {
-    let cache: string[] | undefined;
+    let closed = false;
+    function finish(value: CardResult) {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
     let scroll = 0;
     let totalLines = 0;
+    let lastWidth = 0;
+    let wrappedLines: string[] = [];
+    let renderCache: string[] | undefined;
+
+    function ensureWrapped(width: number) {
+      if (lastWidth === width && wrappedLines.length > 0) return;
+      wrappedLines = card
+        ? renderCardLines(card, width, theme)
+        : [theme.fg("warning", `未找到卡片: ${kp?.name || kp?.id || "未知知识点"}`)];
+      totalLines = wrappedLines.length;
+      scroll = clampScroll(scroll, totalLines, REVIEW_PANEL_BODY_LINES);
+      lastWidth = width;
+      renderCache = undefined;
+    }
+
+    function resultFor(action: CardResult["action"]): CardResult {
+      return { action, ...cardResultBase };
+    }
+
     return {
       render(width: number) {
-        if (cache) return cache;
-        const body = card
-          ? renderCardLines(card, width, theme)
-          : [theme.fg("warning", `未找到卡片: ${kp?.name || kp?.id || "未知知识点"}`)];
-        const windowed = renderWindowedLines(body, scroll);
-        scroll = windowed.safeScroll;
-        totalLines = windowed.total;
+        if (closed) return [];
+        ensureWrapped(width);
+        if (renderCache) return renderCache;
+        const windowed = renderWindowedLines(wrappedLines, scroll);
         const scrollHint = windowed.hasOverflow
           ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
           : "";
-        cache = [
+        renderCache = [
           theme.fg("accent", "─".repeat(width)),
           ...windowed.visible,
           theme.fg("dim", `Enter 出题 • N 下一张 • S 跳过 • Esc 退出${scrollHint}`),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
-        return cache;
+        return renderCache;
       },
       invalidate() {
-        cache = undefined;
+        renderCache = undefined;
       },
       handleInput(data: string) {
+        if (closed) return;
         if (matchesKey(data, Key.escape)) {
-          done({ action: "exit", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
+          finish(resultFor("exit"));
           return;
         }
         const lower = data.toLowerCase();
         if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
-          done({ action: "practice", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
-        } else if (lower === "n") {
-          done({ action: "next_card", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
-        } else if (lower === "s") {
-          done({ action: "skip", knowledge_point_id: kp?.id || "", card_found: Boolean(card), path: card?.path, position: kp?.card_position, total: kp?.card_total });
-        } else if (isScrollUp(data)) {
+          finish(resultFor("practice"));
+          return;
+        }
+        if (lower === "n") {
+          finish(resultFor("next_card"));
+          return;
+        }
+        if (lower === "s") {
+          finish(resultFor("skip"));
+          return;
+        }
+        const prevScroll = scroll;
+        if (isScrollUp(data)) {
           scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         } else if (isScrollDown(data)) {
           scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         }
-        tui.requestRender();
+        if (scroll !== prevScroll) {
+          renderCache = undefined;
+          tui.requestRender();
+        }
       },
     };
   });
@@ -564,54 +634,86 @@ function renderMarkdownPanel(title: string, body: string, width: number, theme: 
 
 async function showMaterialPanel(ctx: ExtensionContext, title: string, body: string, path = ""): Promise<MaterialResult> {
   if (!ctx.hasUI) return { action: "practice", path, found: Boolean(body) };
+  const panelFooter = "Enter 出题 • N 下一节 • S 跳过 • Esc 退出";
   return await ctx.ui.custom<MaterialResult>((tui, theme, _kb, done) => {
-    let cache: string[] | undefined;
+    let closed = false;
+    function finish(value: MaterialResult) {
+      if (closed) return;
+      closed = true;
+      done(value);
+    }
+
     let scroll = 0;
     let totalLines = 0;
+    let lastWidth = 0;
+    let wrappedLines: string[] = [];
+    let renderCache: string[] | undefined;
+
+    function ensureWrapped(width: number) {
+      if (lastWidth === width && wrappedLines.length > 0) return;
+      wrappedLines = body
+        ? renderMarkdownPanel(title, body, width, theme)
+        : [theme.fg("warning", `${title}: 未找到内容`)];
+      totalLines = wrappedLines.length;
+      scroll = clampScroll(scroll, totalLines, REVIEW_PANEL_BODY_LINES);
+      lastWidth = width;
+      renderCache = undefined;
+    }
+
+    function resultFor(action: MaterialResult["action"]): MaterialResult {
+      return { action, path, found: Boolean(body) };
+    }
+
     return {
       render(width: number) {
-        if (cache) return cache;
-        const lines = body
-          ? renderMarkdownPanel(title, body, width, theme)
-          : [theme.fg("warning", `${title}: 未找到内容`)];
-        const windowed = renderWindowedLines(lines, scroll);
-        scroll = windowed.safeScroll;
-        totalLines = windowed.total;
+        if (closed) return [];
+        ensureWrapped(width);
+        if (renderCache) return renderCache;
+        const windowed = renderWindowedLines(wrappedLines, scroll);
         const scrollHint = windowed.hasOverflow
           ? ` • J/K 滚动 ${scroll + 1}-${Math.min(scroll + REVIEW_PANEL_BODY_LINES, windowed.total)}/${windowed.total}`
           : "";
-        cache = [
+        renderCache = [
           theme.fg("accent", "─".repeat(width)),
           ...windowed.visible,
           "",
-          theme.fg("dim", `Enter 出题 • N 下一节 • S 跳过 • Esc 退出${scrollHint}`),
+          theme.fg("dim", `${panelFooter}${scrollHint}`),
           theme.fg("accent", "─".repeat(width)),
         ].map((line) => truncateToWidth(line, width));
-        return cache;
+        return renderCache;
       },
       invalidate() {
-        cache = undefined;
+        renderCache = undefined;
       },
       handleInput(data: string) {
+        if (closed) return;
         if (matchesKey(data, Key.escape)) {
-          done({ action: "exit", path, found: Boolean(body) });
+          finish(resultFor("exit"));
           return;
         }
         const lower = data.toLowerCase();
         if (matchesKey(data, Key.enter) || matchesKey(data, Key.return)) {
-          done({ action: "practice", path, found: Boolean(body) });
-        } else if (lower === "n") {
-          done({ action: "next_section", path, found: Boolean(body) });
-        } else if (lower === "s") {
-          done({ action: "skip", path, found: Boolean(body) });
-        } else if (isScrollUp(data)) {
+          finish(resultFor("practice"));
+          return;
+        }
+        if (lower === "n") {
+          finish(resultFor("next_section"));
+          return;
+        }
+        if (lower === "s") {
+          finish(resultFor("skip"));
+          return;
+        }
+        const prevScroll = scroll;
+        if (isScrollUp(data)) {
           scroll = clampScroll(scroll - 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         } else if (isScrollDown(data)) {
           scroll = clampScroll(scroll + 1, totalLines || 1, REVIEW_PANEL_BODY_LINES);
-          cache = undefined;
         }
-        tui.requestRender();
+        if (scroll !== prevScroll) {
+          renderCache = undefined;
+          tui.requestRender();
+        }
       },
     };
   });
