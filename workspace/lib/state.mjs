@@ -226,6 +226,18 @@ function learningProfilePath(subjectId) {
   return join(LEARNING_PROFILE_DIR, `${safeSubjectId(subjectId)}.json`);
 }
 
+function profileUserDir(profileRoot) {
+  return profileRoot ? join(profileRoot, "_user") : "";
+}
+
+function profileLearningProfilePath(profileRoot) {
+  return profileRoot ? join(profileUserDir(profileRoot), "learning_profile.json") : "";
+}
+
+function profileSummaryDir(profileRoot) {
+  return profileRoot ? join(profileUserDir(profileRoot), "summaries") : "";
+}
+
 function defaultLearningProfile(subjectId) {
   return {
     subject_id: subjectId || "default",
@@ -251,21 +263,26 @@ function extractReportLines(report, patterns, limit = 5) {
   return uniqueRecent(lines.filter((line) => patterns.some((pattern) => pattern.test(line))), limit);
 }
 
-export function loadLearningProfile(subjectId) {
+export function loadLearningProfile(subjectId, options = {}) {
+  const privatePath = profileLearningProfilePath(options.profileRoot);
+  if (privatePath && existsSync(privatePath)) {
+    return { ...defaultLearningProfile(subjectId), ...loadJSON(privatePath) };
+  }
   const path = learningProfilePath(subjectId);
   if (!existsSync(path)) return defaultLearningProfile(subjectId);
   return { ...defaultLearningProfile(subjectId), ...loadJSON(path) };
 }
 
-export function saveLearningProfile(subjectId, profile) {
+export function saveLearningProfile(subjectId, profile, options = {}) {
   const next = { ...defaultLearningProfile(subjectId), ...profile, subject_id: subjectId || profile.subject_id || "default" };
-  saveJSON(learningProfilePath(subjectId), next);
+  const privatePath = profileLearningProfilePath(options.profileRoot);
+  saveJSON(privatePath || learningProfilePath(subjectId), next);
   return next;
 }
 
-export function updateLearningProfileFromSummary(subjectId, summary = {}) {
+export function updateLearningProfileFromSummary(subjectId, summary = {}, options = {}) {
   const sid = subjectId || "default";
-  const current = loadLearningProfile(sid);
+  const current = loadLearningProfile(sid, options);
   const report = String(summary.report || "");
   const total = Number(summary.total_questions ?? 0);
   const correct = Number(summary.correct ?? 0);
@@ -310,7 +327,7 @@ export function updateLearningProfileFromSummary(subjectId, summary = {}) {
     lingering_questions: lingering,
     next_suggestions: suggestions,
     updated_at: timestampNow(),
-  });
+  }, options);
 }
 
 export function formatLearningProfileForPrompt(profile) {
@@ -544,12 +561,15 @@ export function writeArchiveFiles(archive, questionId, sessionId) {
 }
 
 export function writeSummaryFile(sessionId, report, meta = {}) {
-  if (!existsSync(SUMMARY_DIR)) mkdirSync(SUMMARY_DIR, { recursive: true });
+  const summaryDir = profileSummaryDir(meta.profileRoot) || SUMMARY_DIR;
+  if (!existsSync(summaryDir)) mkdirSync(summaryDir, { recursive: true });
   const safeSessionId = sessionId || `s_${Date.now()}`;
-  const path = join(SUMMARY_DIR, `${safeSessionId}_总结.md`);
+  const path = join(summaryDir, `${safeSessionId}_总结.md`);
   const frontmatter = [
     "---",
     `session_id: ${safeSessionId}`,
+    meta.subject_id ? `subject_id: ${meta.subject_id}` : "",
+    meta.profile_id ? `profile_id: ${meta.profile_id}` : "",
     meta.date ? `date: ${meta.date}` : `date: ${dateStr()}`,
     meta.scope ? `scope: ${String(meta.scope).replace(/\n/g, " ")}` : "",
     meta.total_questions != null ? `total_questions: ${meta.total_questions}` : "",

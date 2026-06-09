@@ -17,6 +17,7 @@ import {
   markCardSeen,
   updateCardPractice,
   updateLearningProfileFromSummary,
+  writeSummaryFile,
 } from "../lib/state.mjs";
 import {
   assertValidProfileShape,
@@ -167,6 +168,46 @@ test("active profile creates revision draft and enabling archives original", () 
     assert.ok(listActiveProfiles(config).some((profile) => profile.subjectId === draft.subjectId));
     assert.ok(!listActiveProfiles(config).some((profile) => profile.subjectId === subjectId));
     assert.ok(listProfiles("archived", config).some((profile) => profile.subjectId === subjectId));
+  } finally {
+    rmSync(config.profilesDirAbs, { recursive: true, force: true });
+  }
+});
+
+test("revision drafts use the root subject id and daily vN suffix instead of nesting", () => {
+  const subjectId = "revision-nesting-source";
+  const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
+  try {
+    createDraftProfile({ subjectId, name: "Revision Nesting Source", sourceDir: "." }, config);
+    enableProfile(subjectId, config);
+
+    const firstDraft = createRevisionDraft(subjectId, "first revision", config);
+    assert.match(firstDraft.subjectId, /^revision-nesting-source__draft_\d{8}$/);
+    assert.equal(firstDraft.revisionRoot, subjectId);
+    assert.equal(firstDraft.revisionNumber, 1);
+
+    const firstActive = enableProfile(firstDraft.subjectId, config);
+    const secondDraft = createRevisionDraft(firstActive.subjectId, "second revision", config);
+    assert.match(secondDraft.subjectId, /^revision-nesting-source__draft_\d{8}_v2$/);
+    assert.doesNotMatch(secondDraft.subjectId, /__draft_\d{8}__draft_/);
+    assert.equal(secondDraft.revisionRoot, subjectId);
+    assert.equal(secondDraft.revisionOf, firstActive.subjectId);
+    assert.equal(secondDraft.revisionNumber, 2);
+  } finally {
+    rmSync(config.profilesDirAbs, { recursive: true, force: true });
+  }
+});
+
+test("revision draft naming strips already nested legacy draft suffixes", () => {
+  const badSubjectId = "legacy-nest__draft_20260608__draft_20260608";
+  const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
+  try {
+    createDraftProfile({ subjectId: badSubjectId, name: "Legacy Nested Active", sourceDir: "." }, config);
+    enableProfile(badSubjectId, config);
+    const draft = createRevisionDraft(badSubjectId, "repair legacy nested id", config);
+    assert.match(draft.subjectId, /^legacy-nest__draft_\d{8}$/);
+    assert.doesNotMatch(draft.subjectId, /__draft_\d{8}__draft_/);
+    assert.equal(draft.revisionRoot, "legacy-nest");
+    assert.equal(draft.revisionOf, badSubjectId);
   } finally {
     rmSync(config.profilesDirAbs, { recursive: true, force: true });
   }
@@ -343,6 +384,45 @@ test("summary updates subject learning profile", () => {
   } finally {
     if (hadFile) writeFileSync(profilePath, original, "utf-8");
     else rmSync(profilePath, { force: true });
+  }
+});
+
+test("summary and learning profile are written to profile private _user directory when profileRoot is provided", () => {
+  const subjectId = "unit-private-memory";
+  const profileRoot = mkdtempSync(join(tmpdir(), "review-profile-private-"));
+  try {
+    const summaryPath = writeSummaryFile("s_private_memory", "本次总结内容", {
+      profileRoot,
+      subject_id: subjectId,
+      profile_id: subjectId,
+      scope: "chapter 1",
+      total_questions: 2,
+      correct: 2,
+      incorrect: 0,
+    });
+    assert.ok(summaryPath.startsWith(join(profileRoot, "_user", "summaries")));
+    const summaryText = readFileSync(summaryPath, "utf-8");
+    assert.match(summaryText, /subject_id: unit-private-memory/);
+    assert.match(summaryText, /profile_id: unit-private-memory/);
+
+    updateLearningProfileFromSummary(subjectId, {
+      session_id: "s_private_memory",
+      report: "下一步建议：继续复习章节卡片。",
+      scope: "chapter 1",
+      total_questions: 2,
+      correct: 2,
+      incorrect: 0,
+      summary_path: "_user/summaries/s_private_memory_总结.md",
+    }, { profileRoot });
+
+    const privateProfilePath = join(profileRoot, "_user", "learning_profile.json");
+    assert.ok(existsSync(privateProfilePath));
+    const profile = loadLearningProfile(subjectId, { profileRoot });
+    assert.equal(profile.subject_id, subjectId);
+    assert.equal(profile.recent_sessions[0].session_id, "s_private_memory");
+    assert.equal(profile.recent_sessions[0].summary_path, "_user/summaries/s_private_memory_总结.md");
+  } finally {
+    rmSync(profileRoot, { recursive: true, force: true });
   }
 });
 

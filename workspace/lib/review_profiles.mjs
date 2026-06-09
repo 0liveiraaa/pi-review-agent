@@ -64,6 +64,45 @@ function validateProfilePathModel(profile, paths) {
   }
 }
 
+function stripDraftSuffix(subjectId) {
+  let id = String(subjectId || "");
+  let next = id.replace(/__draft_\d{8}(?:_v\d+)?$/i, "");
+  while (next !== id) {
+    id = next;
+    next = id.replace(/__draft_\d{8}(?:_v\d+)?$/i, "");
+  }
+  return id;
+}
+
+export function getRevisionRootSubjectId(profileOrSubjectId, config = loadReviewConfig()) {
+  let profile = typeof profileOrSubjectId === "string"
+    ? loadProfile(profileOrSubjectId, config)
+    : profileOrSubjectId;
+  if (!profile) return stripDraftSuffix(profileOrSubjectId);
+  if (profile.revisionRoot) return cleanSubjectId(stripDraftSuffix(profile.revisionRoot));
+
+  const seen = new Set();
+  while (profile?.revisionOf && !seen.has(profile.subjectId)) {
+    seen.add(profile.subjectId);
+    const parent = loadProfile(profile.revisionOf, config);
+    if (!parent) break;
+    profile = parent;
+    if (profile.revisionRoot) return cleanSubjectId(stripDraftSuffix(profile.revisionRoot));
+  }
+
+  return cleanSubjectId(stripDraftSuffix(profile?.subjectId || profileOrSubjectId));
+}
+
+function nextRevisionDraftId(rootSubjectId, stamp, config) {
+  let revisionNumber = 1;
+  let draftId = cleanSubjectId(`${rootSubjectId}__draft_${stamp}`);
+  while (existsSync(getProfileDir(draftId, config))) {
+    revisionNumber += 1;
+    draftId = cleanSubjectId(`${rootSubjectId}__draft_${stamp}_v${revisionNumber}`);
+  }
+  return { draftId, revisionNumber };
+}
+
 export function getProfilesRoot(config = loadReviewConfig()) {
   seedBundledProfiles(config.profilesDirAbs);
   return config.profilesDirAbs;
@@ -241,12 +280,8 @@ export function createRevisionDraft(subjectId, reason = "", config = loadReviewC
   if (source.status !== "active") throw new Error(`Can only create revision drafts from active profiles: ${subjectId}`);
 
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  let draftId = cleanSubjectId(`${source.subjectId}__draft_${stamp}`);
-  let n = 2;
-  while (existsSync(getProfileDir(draftId, config))) {
-    draftId = cleanSubjectId(`${source.subjectId}__draft_${stamp}_${n}`);
-    n += 1;
-  }
+  const revisionRoot = getRevisionRootSubjectId(source, config);
+  const { draftId, revisionNumber } = nextRevisionDraftId(revisionRoot, stamp, config);
 
   const targetRoot = getProfileDir(draftId, config);
   copyDirRecursive(source.root, targetRoot);
@@ -256,11 +291,14 @@ export function createRevisionDraft(subjectId, reason = "", config = loadReviewC
   raw.name = `${source.name || source.subjectId} 修订版`;
   raw.status = "draft";
   raw.revisionOf = source.subjectId;
+  raw.revisionRoot = revisionRoot;
+  raw.revisionNumber = revisionNumber;
   raw.revisionCreatedAt = now;
   raw.revisionReason = String(reason || "");
   raw.updatedAt = now;
   delete raw.supersededBy;
   delete raw.supersededAt;
+  delete raw.revisionEnabledAt;
   writeJSON(join(targetRoot, PROFILE_FILE), raw);
   return hydrateProfile(raw, config);
 }

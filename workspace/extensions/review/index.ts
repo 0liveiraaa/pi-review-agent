@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   Container,
   Editor,
@@ -474,7 +474,7 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   })));
   if (!profileId) return null;
   const profile = loadProfile(profileId);
-  const lp = loadLearningProfile(profile?.subjectId || profileId);
+  const lp = loadLearningProfile(profile?.subjectId || profileId, { profileRoot: profile?.root });
   const learningProfileText = formatLearningProfileForPrompt(lp);
   const hasProfileHistory = lp?.updated_at != null && (lp.recent_sessions || []).length > 0;
   if (hasProfileHistory) {
@@ -1236,19 +1236,23 @@ export default function reviewExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "review_summary",
     label: "Review Summary",
-    description: "Save the final review session summary report to workspace/archive/summaries.",
+    description: "Save the final review session summary report to the selected profile's private _user/summaries directory.",
     parameters: SummarySchema,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const progress = loadProgress();
       const active = progress.current_session;
       const sessionId = params.session_id || active?.session_id || `s_${Date.now()}`;
+      const subjectId = params.subject_id || active?.profile_id || "default";
+      const profileRoot = subjectId ? loadProfile(subjectId)?.root : undefined;
       const path = writeSummaryFile(sessionId, params.report, {
+        subject_id: subjectId,
+        profile_id: subjectId,
+        profileRoot,
         scope: params.scope || active?.scope,
         total_questions: params.total_questions ?? active?.total_questions,
         correct: params.correct ?? active?.correct,
         incorrect: params.incorrect ?? active?.incorrect,
       });
-      const subjectId = params.subject_id || active?.profile_id || "default";
       updateLearningProfileFromSummary(subjectId, {
         session_id: sessionId,
         report: params.report,
@@ -1256,8 +1260,8 @@ export default function reviewExtension(pi: ExtensionAPI): void {
         total_questions: params.total_questions ?? active?.total_questions,
         correct: params.correct ?? active?.correct,
         incorrect: params.incorrect ?? active?.incorrect,
-        summary_path: path,
-      });
+        summary_path: profileRoot ? relative(profileRoot, path).replace(/\\/g, "/") : path,
+      }, { profileRoot });
       updateSession({ last_action: "summary_saved", summary_path: path });
       if (params.end_session && active?.session_id === sessionId) {
         endSession();

@@ -314,3 +314,43 @@ review-core 通过 `injectReviewCore()` 强制注入每个命令 prompt。子 sk
 - `lib/terminal.mjs` — 旧终端渲染
 
 旧版 `SYSTEM.md` 工作流已被 extension + skill 注入取代。
+---
+
+## 10. 资料包私有运行数据
+
+从 2026-06-09 起，summary 和长期学习画像不再只依赖全局 `archive/` / `state/learning_profiles/`。新数据优先写入所选 profile 的私有 `_user/` 目录：
+
+```text
+review_profiles/{subjectId}/
+├── _user/
+│   ├── summaries/
+│   │   └── {session_id}_总结.md
+│   └── learning_profile.json
+```
+
+规则：
+
+- `review_summary` 写入 `_user/summaries/`，并更新 `_user/learning_profile.json`。
+- `/review` 启动后优先读取当前 profile 的 `_user/learning_profile.json`。
+- 若私有画像不存在，兼容 fallback 到旧的 `state/learning_profiles/{subjectId}.json`。
+- `review_archive` 暂时仍可写全局 `archive/sessions/`，避免一次性迁移过大。
+- `_user/` 是用户私有运行数据，不属于可分享资料包，不应进入导出包或插件市场 bundled profile。
+
+## 11. Revision 命名与保留策略
+
+修订 active profile 时，`/review-fix` 仍采用“复制为 draft，再确认启用”的策略。新 draft 命名不再基于当前 active id 继续拼接，而是回溯到原始 root subjectId：
+
+```text
+{rootSubjectId}__draft_{YYYYMMDD}
+{rootSubjectId}__draft_{YYYYMMDD}_v2
+{rootSubjectId}__draft_{YYYYMMDD}_v3
+```
+
+`profile.json` 记录：
+
+- `revisionOf`：本次被修订的 active profile。
+- `revisionRoot`：原始 root subjectId。
+- `revisionNumber`：当天递增版本号。
+- `revisionCreatedAt` / `revisionReason`：修订时间和原因。
+
+启用 revision draft 时，旧 active 标记为 `archived`，新 draft 标记为 `active`。历史目录默认保留但隐藏：`/review` 只显示 active，`/review-fix` 只显示 active 和 draft。后续如增加 prune 功能，必须默认 dry-run 并要求用户确认。
