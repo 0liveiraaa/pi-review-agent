@@ -120,7 +120,9 @@ for (const searchDir of PROFILE_SEARCH_DIRS) {
   if (!existsSync(searchDir)) continue;
   for (const entry of readdirSync(searchDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || seenProfiles.has(entry.name)) continue;
-    const pf = join(searchDir, entry.name, "profile.json");
+    const pf = existsSync(join(searchDir, entry.name, "active", "profile.json"))
+      ? join(searchDir, entry.name, "active", "profile.json")
+      : join(searchDir, entry.name, "profile.json");
     if (existsSync(pf)) {
       try {
         const p = JSON.parse(readFileSync(pf, "utf-8"));
@@ -142,7 +144,9 @@ if (profiles.length > 0) {
 // 6a. Demo profile release health
 const DEMO_PROFILE_CANDIDATES = [
   join(PROFILES_DIR, "demo-review", "profile.json"),
+  join(PROFILES_DIR, "demo-review", "active", "profile.json"),
   join(resolve(workspaceRoot, "review_profiles"), "demo-review", "profile.json"),
+  join(resolve(workspaceRoot, "review_profiles"), "demo-review", "active", "profile.json"),
 ];
 let demoProfilePath = null;
 for (const p of DEMO_PROFILE_CANDIDATES) {

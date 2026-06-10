@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 const workspaceRoot = resolve(import.meta.dirname, "..");
-const profilesDir = resolve(workspaceRoot, "review_profiles");
+const profilesDir = resolve(workspaceRoot, "profiles");
 const legacyDir = resolve(workspaceRoot, "docs/legacy/demo-revisions");
 const demoProfilePath = join(profilesDir, "demo-review", "profile.json");
 

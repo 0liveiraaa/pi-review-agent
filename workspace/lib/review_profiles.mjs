@@ -1,9 +1,22 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import { loadReviewConfig, PACKAGE_ROOT, PROJECT_ROOT } from "./review_config.mjs";
 
 const ALLOWED_SOURCE_EXTENSIONS = new Set([".md", ".txt"]);
 const PROFILE_FILE = "profile.json";
+const ACTIVE_SLOT = "active";
+const DRAFT_SLOT = "draft";
+const ARCHIVED_SLOT = "archived";
 
 function ensureDir(path) {
   if (!existsSync(path)) mkdirSync(path, { recursive: true });
@@ -18,16 +31,18 @@ function writeJSON(path, data) {
   writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
 }
 
-function copyDirRecursive(source, target) {
+function copyDirRecursive(source, target, options = {}) {
   if (!existsSync(source) || !statSync(source).isDirectory()) {
     throw new Error(`Source profile directory not found: ${source}`);
   }
   ensureDir(target);
+  const exclude = new Set(options.exclude || []);
   for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (exclude.has(entry.name)) continue;
     const sourcePath = join(source, entry.name);
     const targetPath = join(target, entry.name);
     if (entry.isDirectory()) {
-      copyDirRecursive(sourcePath, targetPath);
+      copyDirRecursive(sourcePath, targetPath, options);
     } else if (entry.isFile()) {
       ensureDir(dirname(targetPath));
       copyFileSync(sourcePath, targetPath);
@@ -74,11 +89,15 @@ function stripDraftSuffix(subjectId) {
   return id;
 }
 
+function timestampForPath(date = new Date()) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
+}
+
 export function getRevisionRootSubjectId(profileOrSubjectId, config = loadReviewConfig()) {
   let profile = typeof profileOrSubjectId === "string"
     ? loadProfile(profileOrSubjectId, config)
     : profileOrSubjectId;
-  if (!profile) return stripDraftSuffix(profileOrSubjectId);
+  if (!profile) return cleanSubjectId(stripDraftSuffix(profileOrSubjectId));
   if (profile.revisionRoot) return cleanSubjectId(stripDraftSuffix(profile.revisionRoot));
 
   const seen = new Set();
@@ -93,19 +112,29 @@ export function getRevisionRootSubjectId(profileOrSubjectId, config = loadReview
   return cleanSubjectId(stripDraftSuffix(profile?.subjectId || profileOrSubjectId));
 }
 
-function nextRevisionDraftId(rootSubjectId, stamp, config) {
-  let revisionNumber = 1;
-  let draftId = cleanSubjectId(`${rootSubjectId}__draft_${stamp}`);
-  while (existsSync(getProfileDir(draftId, config))) {
-    revisionNumber += 1;
-    draftId = cleanSubjectId(`${rootSubjectId}__draft_${stamp}_v${revisionNumber}`);
-  }
-  return { draftId, revisionNumber };
-}
-
 export function getProfilesRoot(config = loadReviewConfig()) {
   seedBundledProfiles(config.profilesDirAbs);
   return config.profilesDirAbs;
+}
+
+export function getProfileFamilyRoot(subjectId, config = loadReviewConfig()) {
+  return join(getProfilesRoot(config), cleanSubjectId(subjectId));
+}
+
+export function getActiveProfileRoot(subjectId, config = loadReviewConfig()) {
+  return join(getProfileFamilyRoot(subjectId, config), ACTIVE_SLOT);
+}
+
+export function getDraftProfileRoot(subjectId, config = loadReviewConfig()) {
+  return join(getProfileFamilyRoot(subjectId, config), DRAFT_SLOT);
+}
+
+export function getArchivedProfilesRoot(subjectId, config = loadReviewConfig()) {
+  return join(getProfileFamilyRoot(subjectId, config), ARCHIVED_SLOT);
+}
+
+function getLegacyProfileRoot(subjectId, config = loadReviewConfig()) {
+  return join(getProfilesRoot(config), cleanSubjectId(subjectId));
 }
 
 function seedBundledProfiles(targetRoot) {
@@ -115,26 +144,65 @@ function seedBundledProfiles(targetRoot) {
   for (const entry of readdirSync(bundledRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const source = join(bundledRoot, entry.name);
-    const target = join(targetRoot, entry.name);
-    if (existsSync(join(target, PROFILE_FILE))) continue;
-    copyDirRecursive(source, target);
+    const familyRoot = join(targetRoot, entry.name);
+    const activeTarget = join(familyRoot, ACTIVE_SLOT);
+    const legacyTarget = join(targetRoot, entry.name);
+    if (existsSync(join(activeTarget, PROFILE_FILE)) || existsSync(join(legacyTarget, PROFILE_FILE))) continue;
+    copyDirRecursive(source, activeTarget);
+    ensureDir(join(familyRoot, "_user"));
+    try {
+      const raw = readJSON(join(activeTarget, PROFILE_FILE));
+      raw.subjectId = cleanSubjectId(raw.subjectId || entry.name);
+      raw.status = "active";
+      raw.slot = ACTIVE_SLOT;
+      raw.updatedAt = raw.updatedAt || new Date().toISOString();
+      writeJSON(join(activeTarget, PROFILE_FILE), raw);
+    } catch {
+      // Leave copied bundled data as-is; loadProfile will surface shape errors.
+    }
   }
 }
 
 export function getProfileDir(subjectId, config = loadReviewConfig()) {
-  return join(getProfilesRoot(config), cleanSubjectId(subjectId));
+  const familyActive = getActiveProfileRoot(subjectId, config);
+  if (existsSync(join(familyActive, PROFILE_FILE))) return familyActive;
+  const familyDraft = getDraftProfileRoot(subjectId, config);
+  if (existsSync(join(familyDraft, PROFILE_FILE))) return familyDraft;
+  return getLegacyProfileRoot(subjectId, config);
+}
+
+function findProfileRoot(subjectId, config = loadReviewConfig(), preferredSlot = ACTIVE_SLOT) {
+  const id = cleanSubjectId(subjectId);
+  const slots = preferredSlot === DRAFT_SLOT ? [DRAFT_SLOT, ACTIVE_SLOT] : [ACTIVE_SLOT, DRAFT_SLOT];
+  for (const slot of slots) {
+    const root = slot === ACTIVE_SLOT ? getActiveProfileRoot(id, config) : getDraftProfileRoot(id, config);
+    if (existsSync(join(root, PROFILE_FILE))) return { root, familyRoot: getProfileFamilyRoot(id, config), slot, legacy: false };
+  }
+  const legacyRoot = getLegacyProfileRoot(id, config);
+  if (existsSync(join(legacyRoot, PROFILE_FILE))) return { root: legacyRoot, familyRoot: legacyRoot, slot: "legacy", legacy: true };
+  return null;
 }
 
 export function loadProfile(subjectId, config = loadReviewConfig()) {
-  const profilePath = join(getProfileDir(subjectId, config), PROFILE_FILE);
-  if (!existsSync(profilePath)) return null;
-  const profile = readJSON(profilePath);
-  return hydrateProfile(profile, config);
+  const found = findProfileRoot(subjectId, config, ACTIVE_SLOT);
+  if (!found) return null;
+  const profile = readJSON(join(found.root, PROFILE_FILE));
+  return hydrateProfile(profile, config, found);
 }
 
-export function hydrateProfile(profile, config = loadReviewConfig()) {
+export function loadDraftProfile(subjectId, config = loadReviewConfig()) {
+  const found = findProfileRoot(subjectId, config, DRAFT_SLOT);
+  if (!found || found.slot !== DRAFT_SLOT) return null;
+  const profile = readJSON(join(found.root, PROFILE_FILE));
+  return hydrateProfile(profile, config, found);
+}
+
+export function hydrateProfile(profile, config = loadReviewConfig(), location = null) {
   const subjectId = cleanSubjectId(profile.subjectId || profile.id);
-  const root = getProfileDir(subjectId, config);
+  const found = location || findProfileRoot(subjectId, config, profile.status === "draft" ? DRAFT_SLOT : ACTIVE_SLOT);
+  const root = found?.root || getProfileDir(subjectId, config);
+  const familyRoot = found?.legacy ? root : (found?.familyRoot || getProfileFamilyRoot(subjectId, config));
+  const slot = found?.slot || (profile.status === "draft" ? DRAFT_SLOT : ACTIVE_SLOT);
   const paths = {
     subject: profile.paths?.subject || "subject.md",
     knowledgeIndex: profile.paths?.knowledgeIndex || "knowledge_index.json",
@@ -148,8 +216,13 @@ export function hydrateProfile(profile, config = loadReviewConfig()) {
   return {
     ...profile,
     subjectId,
-    status: profile.status || "draft",
+    status: profile.status || (slot === DRAFT_SLOT ? "draft" : "active"),
+    slot,
+    legacyLayout: Boolean(found?.legacy),
     root,
+    familyRoot,
+    userRoot: join(familyRoot, "_user"),
+    archivedRoot: found?.legacy ? join(root, ARCHIVED_SLOT) : getArchivedProfilesRoot(subjectId, config),
     paths,
     subjectPath: join(root, paths.subject),
     knowledgeIndexPath: join(root, paths.knowledgeIndex),
@@ -161,21 +234,34 @@ export function hydrateProfile(profile, config = loadReviewConfig()) {
   };
 }
 
+function readProfileAt(root, config, location) {
+  const profilePath = join(root, PROFILE_FILE);
+  if (!existsSync(profilePath)) return null;
+  return hydrateProfile(readJSON(profilePath), config, location);
+}
+
 export function listProfiles(status, config = loadReviewConfig()) {
   const root = getProfilesRoot(config);
   if (!existsSync(root)) return [];
   const profiles = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    let profile;
+    const familyRoot = join(root, entry.name);
+    const activeRoot = join(familyRoot, ACTIVE_SLOT);
+    const draftRoot = join(familyRoot, DRAFT_SLOT);
+    const legacyRoot = familyRoot;
     try {
-      profile = loadProfile(entry.name, config);
+      const active = readProfileAt(activeRoot, config, { root: activeRoot, familyRoot, slot: ACTIVE_SLOT, legacy: false });
+      if (active && (!status || active.status === status)) profiles.push(active);
+      const draft = readProfileAt(draftRoot, config, { root: draftRoot, familyRoot, slot: DRAFT_SLOT, legacy: false });
+      if (draft && (!status || draft.status === status)) profiles.push(draft);
+      const legacy = !active && !draft
+        ? readProfileAt(legacyRoot, config, { root: legacyRoot, familyRoot: legacyRoot, slot: "legacy", legacy: true })
+        : null;
+      if (legacy && (!status || legacy.status === status)) profiles.push(legacy);
     } catch {
       continue;
     }
-    if (!profile) continue;
-    if (status && profile.status !== status) continue;
-    profiles.push(profile);
   }
   return profiles.sort((a, b) => String(a.name || a.subjectId).localeCompare(String(b.name || b.subjectId), "zh-Hans-CN"));
 }
@@ -192,17 +278,13 @@ export function listEditableProfiles(config = loadReviewConfig()) {
   return listProfiles(null, config).filter((profile) => profile.status === "draft" || profile.status === "active");
 }
 
-export function createDraftProfile({ subjectId, name, sourceDir }, config = loadReviewConfig()) {
-  const id = cleanSubjectId(subjectId);
-  const root = getProfileDir(id, config);
-  ensureDir(root);
-  for (const subdir of ["cards", "chapters", "exam_points"]) ensureDir(join(root, subdir));
-
+function defaultProfile(id, name, sourceDir, status) {
   const now = new Date().toISOString();
-  const profile = {
+  return {
     subjectId: id,
     name: name || id,
-    status: "draft",
+    status,
+    slot: status === "draft" ? DRAFT_SLOT : ACTIVE_SLOT,
     createdAt: now,
     updatedAt: now,
     sourceDir: sourceDir ? relative(PROJECT_ROOT, resolve(PROJECT_ROOT, sourceDir)).replace(/\\/g, "/") : "",
@@ -216,28 +298,45 @@ export function createDraftProfile({ subjectId, name, sourceDir }, config = load
       qualityReport: "quality_report.md",
     },
   };
-  writeJSON(join(root, PROFILE_FILE), profile);
-  if (!existsSync(join(root, "subject.md"))) {
-    writeFileSync(join(root, "subject.md"), `# ${profile.name}\n\n本资料包仍处于 draft 状态，请通过 /review-fix 复核后启用。\n`, "utf-8");
+}
+
+export function createDraftProfile({ subjectId, name, sourceDir }, config = loadReviewConfig()) {
+  const id = cleanSubjectId(subjectId);
+  const familyRoot = getProfileFamilyRoot(id, config);
+  const activeRoot = getActiveProfileRoot(id, config);
+  const draftRoot = getDraftProfileRoot(id, config);
+  if (existsSync(join(activeRoot, PROFILE_FILE))) {
+    throw new Error(`Profile family already has an active profile: ${id}. Use /review-fix to revise it.`);
   }
-  if (!existsSync(join(root, "knowledge_index.json"))) {
-    writeJSON(join(root, "knowledge_index.json"), { subject: profile.name, chapters: {} });
+  ensureDir(draftRoot);
+  ensureDir(join(familyRoot, "_user"));
+  for (const subdir of ["cards", "chapters", "exam_points"]) ensureDir(join(draftRoot, subdir));
+
+  const profile = defaultProfile(id, name, sourceDir, "draft");
+  writeJSON(join(draftRoot, PROFILE_FILE), profile);
+  if (!existsSync(join(draftRoot, "subject.md"))) {
+    writeFileSync(join(draftRoot, "subject.md"), `# ${profile.name}\n\n本资料包正在初始化，请通过 /review-init 生成基础资料后启用。\n`, "utf-8");
   }
-  if (!existsSync(join(root, "source_map.json"))) writeJSON(join(root, "source_map.json"), { files: [] });
-  if (!existsSync(join(root, "quality_report.md"))) {
-    writeFileSync(join(root, "quality_report.md"), "# 质量报告\n\n- 待生成。\n", "utf-8");
+  if (!existsSync(join(draftRoot, "knowledge_index.json"))) {
+    writeJSON(join(draftRoot, "knowledge_index.json"), { subject: profile.name, chapters: {} });
   }
-  return hydrateProfile(profile, config);
+  if (!existsSync(join(draftRoot, "source_map.json"))) writeJSON(join(draftRoot, "source_map.json"), { files: [] });
+  if (!existsSync(join(draftRoot, "quality_report.md"))) {
+    writeFileSync(join(draftRoot, "quality_report.md"), "# 质量报告\n\n- 待生成。\n", "utf-8");
+  }
+  return hydrateProfile(profile, config, { root: draftRoot, familyRoot, slot: DRAFT_SLOT, legacy: false });
 }
 
 export function writeProfileFile(subjectId, relPath, content, config = loadReviewConfig()) {
-  const profile = loadProfile(subjectId, config);
+  const profile = loadDraftProfile(subjectId, config) || loadProfile(subjectId, config);
   if (!profile) throw new Error(`Profile not found: ${subjectId}`);
-  if (profile.status !== "draft") throw new Error(`Refusing to write non-draft profile: ${subjectId}`);
+  if (profile.status !== "draft" || profile.slot !== DRAFT_SLOT) {
+    throw new Error(`Refusing to write non-draft profile: ${subjectId}`);
+  }
   const safePath = safeRelativePath(relPath);
   const target = resolve(profile.root, safePath);
   const root = resolve(profile.root);
-  if (!(target === root || target.startsWith(root + "\\" ) || target.startsWith(root + "/"))) {
+  if (!(target === root || target.startsWith(root + "\\") || target.startsWith(root + "/"))) {
     throw new Error(`Refusing to write outside profile: ${relPath}`);
   }
   ensureDir(dirname(target));
@@ -249,29 +348,72 @@ export function writeProfileFile(subjectId, relPath, content, config = loadRevie
   return target;
 }
 
+function nextArchivedRoot(profile, config) {
+  const archiveBase = profile.legacyLayout ? join(profile.root, ARCHIVED_SLOT) : getArchivedProfilesRoot(profile.subjectId, config);
+  ensureDir(archiveBase);
+  const base = timestampForPath();
+  let target = join(archiveBase, base);
+  let n = 2;
+  while (existsSync(target)) {
+    target = join(archiveBase, `${base}_v${n}`);
+    n += 1;
+  }
+  return target;
+}
+
 export function enableProfile(subjectId, config = loadReviewConfig()) {
-  const profile = loadProfile(subjectId, config);
-  if (!profile) throw new Error(`Profile not found: ${subjectId}`);
-  if (profile.status !== "draft" && profile.status !== "active") {
-    throw new Error(`Cannot enable profile with status ${profile.status}: ${subjectId}`);
-  }
-  const raw = readJSON(join(profile.root, PROFILE_FILE));
-  if (raw.revisionOf) {
-    const original = loadProfile(raw.revisionOf, config);
-    if (original) {
-      const originalRaw = readJSON(join(original.root, PROFILE_FILE));
-      originalRaw.status = "archived";
-      originalRaw.supersededBy = profile.subjectId;
-      originalRaw.supersededAt = new Date().toISOString();
-      originalRaw.updatedAt = originalRaw.supersededAt;
-      writeJSON(join(original.root, PROFILE_FILE), originalRaw);
+  const draft = loadDraftProfile(subjectId, config);
+  if (draft) {
+    const active = loadProfile(subjectId, config);
+    const now = new Date().toISOString();
+    if (active && active.slot === ACTIVE_SLOT) {
+      const archivedTarget = nextArchivedRoot(active, config);
+      const activeRaw = readJSON(join(active.root, PROFILE_FILE));
+      activeRaw.status = "archived";
+      activeRaw.slot = ARCHIVED_SLOT;
+      activeRaw.archivedAt = now;
+      activeRaw.supersededBy = subjectId;
+      activeRaw.updatedAt = now;
+      writeJSON(join(active.root, PROFILE_FILE), activeRaw);
+      ensureDir(dirname(archivedTarget));
+      renameSync(active.root, archivedTarget);
     }
-    raw.revisionEnabledAt = new Date().toISOString();
+    const activeRoot = getActiveProfileRoot(draft.subjectId, config);
+    if (existsSync(activeRoot)) rmSync(activeRoot, { recursive: true, force: true });
+    ensureDir(dirname(activeRoot));
+    renameSync(draft.root, activeRoot);
+    const raw = readJSON(join(activeRoot, PROFILE_FILE));
+    raw.subjectId = draft.subjectId;
+    raw.status = "active";
+    raw.slot = ACTIVE_SLOT;
+    raw.revisionEnabledAt = now;
+    raw.updatedAt = now;
+    raw.version = raw.version || timestampForPath();
+    writeJSON(join(activeRoot, PROFILE_FILE), raw);
+    ensureDir(join(getProfileFamilyRoot(draft.subjectId, config), "_user"));
+    return hydrateProfile(raw, config, {
+      root: activeRoot,
+      familyRoot: getProfileFamilyRoot(draft.subjectId, config),
+      slot: ACTIVE_SLOT,
+      legacy: false,
+    });
   }
+
+  const legacy = loadProfile(subjectId, config);
+  if (!legacy) throw new Error(`Profile not found: ${subjectId}`);
+  if (legacy.status !== "draft" && legacy.status !== "active") {
+    throw new Error(`Cannot enable profile with status ${legacy.status}: ${subjectId}`);
+  }
+  const raw = readJSON(join(legacy.root, PROFILE_FILE));
   raw.status = "active";
   raw.updatedAt = new Date().toISOString();
-  writeJSON(join(profile.root, PROFILE_FILE), raw);
-  return hydrateProfile(raw, config);
+  writeJSON(join(legacy.root, PROFILE_FILE), raw);
+  return hydrateProfile(raw, config, {
+    root: legacy.root,
+    familyRoot: legacy.familyRoot,
+    slot: legacy.slot,
+    legacy: legacy.legacyLayout,
+  });
 }
 
 export function createRevisionDraft(subjectId, reason = "", config = loadReviewConfig()) {
@@ -279,28 +421,57 @@ export function createRevisionDraft(subjectId, reason = "", config = loadReviewC
   if (!source) throw new Error(`Profile not found: ${subjectId}`);
   if (source.status !== "active") throw new Error(`Can only create revision drafts from active profiles: ${subjectId}`);
 
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const revisionRoot = getRevisionRootSubjectId(source, config);
-  const { draftId, revisionNumber } = nextRevisionDraftId(revisionRoot, stamp, config);
+  if (source.legacyLayout) {
+    const rootSubjectId = getRevisionRootSubjectId(source, config);
+    const familyRoot = getProfileFamilyRoot(rootSubjectId, config);
+    const draftRoot = getDraftProfileRoot(rootSubjectId, config);
+    if (existsSync(join(draftRoot, PROFILE_FILE))) {
+      return loadDraftProfile(rootSubjectId, config);
+    }
+    ensureDir(familyRoot);
+    copyDirRecursive(source.root, draftRoot, { exclude: ["_user", ARCHIVED_SLOT] });
+    const raw = readJSON(join(draftRoot, PROFILE_FILE));
+    const now = new Date().toISOString();
+    raw.subjectId = rootSubjectId;
+    raw.name = raw.name || source.name || rootSubjectId;
+    raw.status = "draft";
+    raw.slot = DRAFT_SLOT;
+    raw.revisionOf = source.subjectId;
+    raw.revisionRoot = rootSubjectId;
+    raw.revisionCreatedAt = now;
+    raw.revisionReason = String(reason || "");
+    raw.updatedAt = now;
+    delete raw.supersededBy;
+    delete raw.supersededAt;
+    delete raw.revisionEnabledAt;
+    writeJSON(join(draftRoot, PROFILE_FILE), raw);
+    ensureDir(join(familyRoot, "_user"));
+    return hydrateProfile(raw, config, { root: draftRoot, familyRoot, slot: DRAFT_SLOT, legacy: false });
+  }
 
-  const targetRoot = getProfileDir(draftId, config);
-  copyDirRecursive(source.root, targetRoot);
-  const raw = readJSON(join(targetRoot, PROFILE_FILE));
+  const draftRoot = getDraftProfileRoot(source.subjectId, config);
+  if (existsSync(join(draftRoot, PROFILE_FILE))) {
+    const draft = loadDraftProfile(source.subjectId, config);
+    return draft;
+  }
+  copyDirRecursive(source.root, draftRoot, { exclude: ["_user"] });
+  const raw = readJSON(join(draftRoot, PROFILE_FILE));
   const now = new Date().toISOString();
-  raw.subjectId = draftId;
-  raw.name = `${source.name || source.subjectId} 修订版`;
+  raw.subjectId = source.subjectId;
+  raw.name = source.name || source.subjectId;
   raw.status = "draft";
+  raw.slot = DRAFT_SLOT;
   raw.revisionOf = source.subjectId;
-  raw.revisionRoot = revisionRoot;
-  raw.revisionNumber = revisionNumber;
+  raw.revisionRoot = source.subjectId;
+  raw.revision = Number(source.revision || 0) + 1;
   raw.revisionCreatedAt = now;
   raw.revisionReason = String(reason || "");
   raw.updatedAt = now;
   delete raw.supersededBy;
   delete raw.supersededAt;
   delete raw.revisionEnabledAt;
-  writeJSON(join(targetRoot, PROFILE_FILE), raw);
-  return hydrateProfile(raw, config);
+  writeJSON(join(draftRoot, PROFILE_FILE), raw);
+  return hydrateProfile(raw, config, { root: draftRoot, familyRoot: source.familyRoot, slot: DRAFT_SLOT, legacy: false });
 }
 
 export function scanSourceFiles(sourceDir, limit = 80) {
@@ -317,8 +488,7 @@ export function scanSourceFiles(sourceDir, limit = 80) {
         if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
         walk(full);
       } else if (entry.isFile()) {
-        const lower = entry.name.toLowerCase();
-        const ext = lower.slice(lower.lastIndexOf("."));
+        const ext = extname(entry.name).toLowerCase();
         if (ALLOWED_SOURCE_EXTENSIONS.has(ext)) {
           out.push({
             path: relative(PROJECT_ROOT, full).replace(/\\/g, "/"),

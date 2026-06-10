@@ -34,6 +34,7 @@ import {
   enableProfile,
   listActiveProfiles,
   listEditableProfiles,
+  loadDraftProfile,
   loadProfile,
   scanSourceFiles,
   writeProfileFile,
@@ -480,7 +481,7 @@ async function chooseReviewSelection(ctx: ExtensionContext, args: string): Promi
   })));
   if (!profileId) return null;
   const profile = loadProfile(profileId);
-  const lp = loadLearningProfile(profile?.subjectId || profileId, { profileRoot: profile?.root });
+  const lp = loadLearningProfile(profile?.subjectId || profileId, { profileRoot: profile?.familyRoot || profile?.root });
   const learningProfileText = formatLearningProfileForPrompt(lp);
   const hasProfileHistory = lp?.updated_at != null && (lp.recent_sessions || []).length > 0;
   if (hasProfileHistory) {
@@ -542,11 +543,13 @@ async function chooseEditableProfile(ctx: ExtensionContext): Promise<any | null>
     return null;
   }
   const id = await selectItem(ctx, "选择要修订的资料包", profiles.map((profile) => ({
-    value: profile.subjectId,
+    value: `${profile.subjectId}::${profile.slot || profile.status}`,
     label: profile.name || profile.subjectId,
     description: `${profile.subjectId} | ${profile.status}${profile.status === "active" ? "（将创建修订草稿）" : ""}`,
   })));
-  return id ? loadProfile(id) : null;
+  if (!id) return null;
+  const [subjectId, slot] = id.split("::");
+  return slot === "draft" ? loadDraftProfile(subjectId) : loadProfile(subjectId);
 }
 
 function getProfileKnowledgePoints(profile: any): any[] {
@@ -1261,7 +1264,8 @@ export default function reviewExtension(pi: ExtensionAPI): void {
       const active = progress.current_session;
       const sessionId = params.session_id || active?.session_id || `s_${Date.now()}`;
       const subjectId = params.subject_id || active?.profile_id || "default";
-      const profileRoot = subjectId ? loadProfile(subjectId)?.root : undefined;
+      const summaryProfile = subjectId ? loadProfile(subjectId) : null;
+      const profileRoot = summaryProfile?.familyRoot || summaryProfile?.root;
       const path = writeSummaryFile(sessionId, params.report, {
         subject_id: subjectId,
         profile_id: subjectId,
@@ -1305,9 +1309,9 @@ export default function reviewExtension(pi: ExtensionAPI): void {
     description: "Safely write a file inside a draft review profile directory.",
     parameters: ProfileWriteSchema,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const profile = loadProfile(params.subject_id);
+      const profile = loadDraftProfile(params.subject_id) || loadProfile(params.subject_id);
       if (!profile) return { content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }] };
-      if (profile.status !== "draft") {
+      if (profile.status !== "draft" || profile.slot !== "draft") {
         return { content: [{ type: "text", text: `Refusing to write non-draft profile: ${params.subject_id}` }] };
       }
       const path = writeProfileFile(params.subject_id, params.path, params.content);

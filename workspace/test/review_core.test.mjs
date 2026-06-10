@@ -26,7 +26,6 @@ import {
   enableProfile,
   listActiveProfiles,
   listDraftProfiles,
-  listProfiles,
   loadProfile,
   writeProfileFile,
 } from "../lib/review_profiles.mjs";
@@ -156,24 +155,27 @@ test("active profile creates revision draft and enabling archives original", () 
 
     const draft = createRevisionDraft(subjectId, "修订卡片", config);
     assert.equal(draft.status, "draft");
+    assert.equal(draft.slot, "draft");
+    assert.equal(draft.subjectId, subjectId);
     assert.equal(draft.revisionOf, subjectId);
-    assert.match(draft.subjectId, /^revision-source__draft_/);
-    assert.ok(existsSync(join(config.profilesDirAbs, draft.subjectId, "cards", "kp_revision.md")));
-    assert.throws(() => writeProfileFile(subjectId, "subject.md", "bad", config), /non-draft/);
+    assert.ok(existsSync(join(config.profilesDirAbs, subjectId, "draft", "cards", "kp_revision.md")));
     writeProfileFile(draft.subjectId, "subject.md", "# Revision Draft\n", config);
+    assert.match(readFileSync(join(config.profilesDirAbs, subjectId, "draft", "subject.md"), "utf-8"), /Revision Draft/);
+    assert.doesNotMatch(readFileSync(join(config.profilesDirAbs, subjectId, "active", "subject.md"), "utf-8"), /Revision Draft/);
 
     const enabled = enableProfile(draft.subjectId, config);
     assert.equal(enabled.status, "active");
-    assert.equal(loadProfile(subjectId, config).status, "archived");
-    assert.ok(listActiveProfiles(config).some((profile) => profile.subjectId === draft.subjectId));
-    assert.ok(!listActiveProfiles(config).some((profile) => profile.subjectId === subjectId));
-    assert.ok(listProfiles("archived", config).some((profile) => profile.subjectId === subjectId));
+    assert.equal(enabled.slot, "active");
+    assert.equal(enabled.subjectId, subjectId);
+    assert.ok(listActiveProfiles(config).some((profile) => profile.subjectId === subjectId));
+    assert.ok(!existsSync(join(config.profilesDirAbs, subjectId, "draft", "profile.json")));
+    assert.ok(existsSync(join(config.profilesDirAbs, subjectId, "archived")));
   } finally {
     rmSync(config.profilesDirAbs, { recursive: true, force: true });
   }
 });
 
-test("revision drafts use the root subject id and daily vN suffix instead of nesting", () => {
+test("revision drafts keep stable subject id inside a profile family", () => {
   const subjectId = "revision-nesting-source";
   const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
   try {
@@ -181,33 +183,53 @@ test("revision drafts use the root subject id and daily vN suffix instead of nes
     enableProfile(subjectId, config);
 
     const firstDraft = createRevisionDraft(subjectId, "first revision", config);
-    assert.match(firstDraft.subjectId, /^revision-nesting-source__draft_\d{8}$/);
+    assert.equal(firstDraft.subjectId, subjectId);
+    assert.equal(firstDraft.slot, "draft");
     assert.equal(firstDraft.revisionRoot, subjectId);
-    assert.equal(firstDraft.revisionNumber, 1);
+    assert.equal(firstDraft.revision, 1);
 
     const firstActive = enableProfile(firstDraft.subjectId, config);
     const secondDraft = createRevisionDraft(firstActive.subjectId, "second revision", config);
-    assert.match(secondDraft.subjectId, /^revision-nesting-source__draft_\d{8}_v2$/);
+    assert.equal(secondDraft.subjectId, subjectId);
+    assert.equal(secondDraft.slot, "draft");
     assert.doesNotMatch(secondDraft.subjectId, /__draft_\d{8}__draft_/);
     assert.equal(secondDraft.revisionRoot, subjectId);
     assert.equal(secondDraft.revisionOf, firstActive.subjectId);
-    assert.equal(secondDraft.revisionNumber, 2);
+    assert.equal(secondDraft.revision, 2);
   } finally {
     rmSync(config.profilesDirAbs, { recursive: true, force: true });
   }
 });
 
-test("revision draft naming strips already nested legacy draft suffixes", () => {
+test("legacy nested revision ids are converted into a clean profile family draft", () => {
   const badSubjectId = "legacy-nest__draft_20260608__draft_20260608";
   const config = { profilesDirAbs: mkdtempSync(join(tmpdir(), "review-profiles-")) };
   try {
-    createDraftProfile({ subjectId: badSubjectId, name: "Legacy Nested Active", sourceDir: "." }, config);
-    enableProfile(badSubjectId, config);
+    writeJson(join(config.profilesDirAbs, badSubjectId, "profile.json"), {
+      subjectId: badSubjectId,
+      name: "Legacy Nested Active",
+      status: "active",
+      paths: {
+        subject: "subject.md",
+        knowledgeIndex: "knowledge_index.json",
+        cards: "cards",
+        chapters: "chapters",
+        examPoints: "exam_points",
+        sourceMap: "source_map.json",
+        qualityReport: "quality_report.md",
+      },
+    });
+    writeFileSync(join(config.profilesDirAbs, badSubjectId, "subject.md"), "# Legacy\n", "utf-8");
+    writeJson(join(config.profilesDirAbs, badSubjectId, "knowledge_index.json"), { subject: "Legacy", chapters: {} });
+    writeJson(join(config.profilesDirAbs, badSubjectId, "source_map.json"), { files: [] });
+    writeFileSync(join(config.profilesDirAbs, badSubjectId, "quality_report.md"), "# Quality\n", "utf-8");
     const draft = createRevisionDraft(badSubjectId, "repair legacy nested id", config);
-    assert.match(draft.subjectId, /^legacy-nest__draft_\d{8}$/);
+    assert.equal(draft.subjectId, "legacy-nest");
+    assert.equal(draft.slot, "draft");
     assert.doesNotMatch(draft.subjectId, /__draft_\d{8}__draft_/);
     assert.equal(draft.revisionRoot, "legacy-nest");
     assert.equal(draft.revisionOf, badSubjectId);
+    assert.ok(existsSync(join(config.profilesDirAbs, "legacy-nest", "draft", "profile.json")));
   } finally {
     rmSync(config.profilesDirAbs, { recursive: true, force: true });
   }
@@ -452,8 +474,8 @@ test("bundled profiles are seeded into an empty user data profile root", () => {
     const active = listActiveProfiles(config);
     assert.ok(active.some((profile) => profile.subjectId === "demo-review"));
     assert.ok(active.some((profile) => profile.subjectId === "cpp-oop"));
-    assert.ok(existsSync(join(profilesDirAbs, "demo-review", "profile.json")));
-    assert.ok(existsSync(join(profilesDirAbs, "cpp-oop", "profile.json")));
+    assert.ok(existsSync(join(profilesDirAbs, "demo-review", "active", "profile.json")));
+    assert.ok(existsSync(join(profilesDirAbs, "cpp-oop", "active", "profile.json")));
     assert.equal(assertValidProfileShape("cpp-oop", config), true);
   } finally {
     rmSync(profilesDirAbs, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 // 状态文件读写 — 与 Python 版本保持 schema 兼容
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadReviewConfig } from "./review_config.mjs";
 
@@ -227,7 +227,10 @@ function learningProfilePath(subjectId) {
 }
 
 function profileUserDir(profileRoot) {
-  return profileRoot ? join(profileRoot, "_user") : "";
+  if (!profileRoot) return "";
+  const leaf = basename(profileRoot);
+  if (leaf === "active" || leaf === "draft") return join(dirname(profileRoot), "_user");
+  return join(profileRoot, "_user");
 }
 
 function profileLearningProfilePath(profileRoot) {

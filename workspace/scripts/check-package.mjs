@@ -131,8 +131,11 @@ for (const skill of CORE_SKILLS) {
 let demoFound = false;
 const profileDirs = [join(packageRoot, "review_profiles"), join(packageRoot, "profiles"), join(packageRoot, "templates", "profiles")];
 for (const dir of profileDirs) {
-  if (existsSync(join(dir, "demo-review", "profile.json"))) {
-    const demo = JSON.parse(readFileSync(join(dir, "demo-review", "profile.json"), "utf-8"));
+  const demoPath = existsSync(join(dir, "demo-review", "active", "profile.json"))
+    ? join(dir, "demo-review", "active", "profile.json")
+    : join(dir, "demo-review", "profile.json");
+  if (existsSync(demoPath)) {
+    const demo = JSON.parse(readFileSync(demoPath, "utf-8"));
     if (demo.status === "active") { demoFound = true; break; }
   }
 }
