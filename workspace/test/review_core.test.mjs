@@ -353,6 +353,25 @@ test("training assets skill is packaged and referenced by core review rules", ()
   assert.match(coreText, /problem_templates/);
 });
 
+test("summary skill documents private profile memory fields", () => {
+  const skillPath = join(WORKSPACE_ROOT, "skills", "review-summary", "SKILL.md");
+  const templatePath = join(WORKSPACE_ROOT, "docs", "review-kit", "skills", "review-summary", "SKILL.md");
+
+  for (const filePath of [skillPath, templatePath]) {
+    const text = readFileSync(filePath, "utf-8");
+    assert.match(text, /_user\/summaries/);
+    assert.match(text, /_user\/learning_profile\.json/);
+    assert.match(text, /weak_points/);
+    assert.match(text, /error_types/);
+    assert.match(text, /lingering_questions/);
+    assert.match(text, /next_suggestions/);
+    assert.match(text, /subject_id/);
+    assert.match(text, /profile_id/);
+    assert.match(text, /session_id/);
+    assert.match(text, /scope/);
+  }
+});
+
 test("normalizes legacy and structured concept cards", () => {
   const legacy = normalizeCardMarkdown(`---
 type: concept
