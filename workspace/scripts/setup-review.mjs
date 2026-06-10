@@ -81,7 +81,7 @@ const REQUIRED_SKILLS = [
   "review-core", "review-question", "review-grade", "review-discuss",
   "review-summary", "review-init", "review-fix",
   "review-profile-structure", "review-profile-index", "review-profile-cards",
-  "review-profile-exam-points", "review-profile-quality",
+  "review-profile-exam-points", "review-profile-quality", "review-profile-training-assets",
 ];
 let skillCount = 0;
 for (const skill of REQUIRED_SKILLS) {

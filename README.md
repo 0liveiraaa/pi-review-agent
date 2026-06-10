@@ -263,13 +263,14 @@ pi-review-agent/
 ├── install.sh                        ← 一键安装脚本（bash）
 ├── workspace/                        ← 主要工作目录
 │   ├── extensions/review/index.ts    ← 入口：注册所有 review 命令和工具
-│   ├── skills/                       ← 14 个 SKILL.md（AI 行为规范）
+│   ├── skills/                       ← 13 个 SKILL.md（AI 行为规范）
 │   │   ├── review-core/              ← 核心规则
 │   │   ├── review-question/          ← 出题规则
 │   │   ├── review-grade/             ← 评分规则
 │   │   ├── review-discuss/           ← 讨论规则
 │   │   ├── review-summary/           ← 总结报告规则
-│   │   └── review-init/             ← 初始化规则
+│   │   ├── review-init/              ← 初始化规则
+│   │   └── review-profile-training-assets/ ← 训练资产规则
 │   ├── lib/                          ← 核心库模块
 │   │   ├── review_engine.mjs         ← 复习引擎
 │   │   ├── review_question.mjs       ← 题目处理

@@ -113,7 +113,16 @@ console.log("━".repeat(50));
 console.log("");
 
 // 2a. Skills: review-core must exist
-const CORE_SKILLS = ["review-core", "review-question", "review-grade", "review-discuss", "review-summary", "review-init", "review-fix"];
+const CORE_SKILLS = [
+  "review-core",
+  "review-question",
+  "review-grade",
+  "review-discuss",
+  "review-summary",
+  "review-init",
+  "review-fix",
+  "review-profile-training-assets",
+];
 // Try pi.skills paths first, then convention directory
 const skillsDirs = (pkg.pi?.skills || []).map((s) => join(packageRoot, s));
 if (skillsDirs.length === 0) skillsDirs.push(join(packageRoot, "skills"));

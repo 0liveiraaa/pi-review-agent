@@ -58,3 +58,4 @@ pi
 - `review-profile-cards`：概念卡片生成。
 - `review-profile-exam-points`：考点总结生成。
 - `review-profile-quality`：质量报告审核。
+- `review-profile-training-assets`：单元总结、易混淆点、引申知识和题型模板等训练资产生成。

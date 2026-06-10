@@ -337,6 +337,22 @@ test("workspace pi config does not auto-load a global review SYSTEM prompt", () 
   assert.equal(existsSync(join(WORKSPACE_ROOT, ".pi", "SYSTEM.md")), false);
 });
 
+test("training assets skill is packaged and referenced by core review rules", () => {
+  const skillPath = join(WORKSPACE_ROOT, "skills", "review-profile-training-assets", "SKILL.md");
+  const templatePath = join(WORKSPACE_ROOT, "docs", "review-kit", "skills", "review-profile-training-assets", "SKILL.md");
+  assert.equal(existsSync(skillPath), true);
+  assert.equal(existsSync(templatePath), true);
+
+  const skillText = readFileSync(skillPath, "utf-8");
+  assert.match(skillText, /problem_templates/);
+  assert.match(skillText, /unit_summaries/);
+  assert.match(skillText, /misconceptions/);
+
+  const coreText = readFileSync(join(WORKSPACE_ROOT, "skills", "review-core", "SKILL.md"), "utf-8");
+  assert.match(coreText, /review-profile-training-assets/);
+  assert.match(coreText, /problem_templates/);
+});
+
 test("normalizes legacy and structured concept cards", () => {
   const legacy = normalizeCardMarkdown(`---
 type: concept

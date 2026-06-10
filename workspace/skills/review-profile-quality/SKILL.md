@@ -1,11 +1,14 @@
 ---
 name: review-profile-quality
-description: 资料包质量审核。对 draft 资料包进行质量审计、生成 quality_report.md。当 /review-init 完成生成或 /review-fix 完成修订后加载。
+description: 资料包质量审核。对 draft 或 active 资料包进行质量审计、生成 quality_report.md 或审核建议。当 /review-init 完成生成、/review-fix 完成修订、或用户要求审核资料包时加载。
 ---
 
 # Profile Quality
 
-你在 `/review-init` 的步骤 8 或 `/review-fix` 修订后被加载。任务：全面审计资料包，生成 `quality_report.md`。
+你在 `/review-init` 的步骤 8、`/review-fix` 修订后，或用户要求审核资料包时被加载。任务：全面审计资料包。
+
+- 如果目标是 `draft`：可以通过 `review_profile_write` 写入或重写 `quality_report.md`。
+- 如果目标是 `active`：只输出审核意见和修订建议，不直接写 active。需要修改时，引导用户使用 `/review-fix` 创建 revision draft。
 
 ## 审计方法
 
@@ -20,8 +23,8 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 ### 完整性
 
 - `subject.md`、`knowledge_index.json`、`source_map.json` 是否存在。
-- `cards/` 是否覆盖了所有知识点。
-- `exam_points/` 是否覆盖了所有章节。
+- `cards/` 是否覆盖了核心知识点；非核心知识点缺卡是否已在报告中说明。
+- `exam_points/` 是否覆盖了主要章节；缺失章节是否影响模式 2。
 - `chapters/` 和 `knowledge_index.json` 的章节数是否一致。
 - `source_map.json` 中是否有源文件未被映射。
 
@@ -49,15 +52,15 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 ### 安全
 
 - 非 legacy-bridge 资料包路径不含 `..`。
-- `profile.json` 状态为 `draft`。
+- `profile.json` 状态与审核场景一致：init/fix 启用前应为 `draft`；普通只读审核可为 `active`。
 - `source_map.json` 中的源文件路径不越界（仅 legacy-bridge 允许外部引用）。
 
 ## 分级
 
 | 级别 | 标准 | 是否阻塞启用 |
 |------|------|-------------|
-| **严重** | 必选文件缺失、知识点覆盖率 < 80%、章节完全缺失、定义有事实性错误、代码无法运行、路径含 `..`、> 20% 源文件无法映射 | ✅ 阻塞 |
-| **待改进** | 覆盖率 80-99%、卡片长度超标、误区虚泛、出题提示不具体、章节粒度偏粗/细、文件大小超标 | ❌ 不阻塞 |
+| **严重** | 必选文件缺失、知识点覆盖率 < 80%、章节完全缺失、定义有事实性错误、编程类代码无法运行、路径含 `..`、> 20% 源文件无法映射 | ✅ 阻塞 |
+| **待改进** | 核心卡片缺失、考点总结缺失、误区虚泛、出题提示不具体、章节粒度偏粗/细、文件大小超标 | ❌ 不阻塞 |
 | **低置信度** | AI 不确定的切分、模糊的章节归属、可能有多种解读的定义 | ❌ 不阻塞 |
 
 ## 报告格式
@@ -65,7 +68,7 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 ```markdown
 # 资料包质量报告
 
-**科目**: {名称} | **Subject ID**: {id} | **审核时间**: {ISO 8601} | **状态**: draft
+**科目**: {名称} | **Subject ID**: {id} | **审核时间**: {ISO 8601} | **状态**: {draft/active}
 
 ## 整体评估
 {诚实评价。不要模板套话。}
@@ -102,12 +105,12 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 ## 完整清单
 - [x] subject.md
 - [x] knowledge_index.json
-- [ ] cards/ — {C}/{M}（缺 {M-C} 张）
+- [ ] cards/ — 完整 {C1} / 简化 {C2} / 缺失 {C3}
 - [x] chapters/ — {K} 章 {S} 小节
 - [x] exam_points/ — {E}/{K} 份
 - [x] source_map.json
 - [x] 路径安全检查
-- [x] 状态检查（draft）
+- [x] 状态检查（{draft/active}）
 
 ## 修订记录
 | 版本 | 时间 | 来源 | 变更 |
@@ -115,7 +118,7 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 | v1 | {时间} | /review-init | 初始生成 |
 
 ## 启用建议
-**建议**: {可以启用 / 修复严重问题后启用 / 补充资料后重新生成}
+**建议**: {可以启用 / 修复严重问题后启用 / 补充资料后重新生成 / active 需创建 revision draft 修订}
 **理由**: {一句}
 **启用后注意**: {遗留问题，如有}
 ```
@@ -127,3 +130,4 @@ description: 资料包质量审核。对 draft 资料包进行质量审计、生
 - [ ] 待改进项给了具体修复建议。
 - [ ] 低置信度项解释了不确定原因。
 - [ ] 启用建议明确：yes / no / conditional。
+- [ ] 如果审核对象是 active，没有直接写文件，只给出 `/review-fix` 修订建议。

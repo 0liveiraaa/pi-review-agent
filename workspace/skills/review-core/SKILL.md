@@ -65,6 +65,7 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 - 参考 `review-init`。
 - 需要时参考资料包构建子技能：`review-profile-structure`、`review-profile-index`、`review-profile-cards`、`review-profile-exam-points`、`review-profile-quality`。
 - 初始化完成后资料包保持 `draft` 状态。
+- `/review-init` 的主要职责是基础结构化。单元总结、易混淆点、引申知识、题型模板等训练资产不强制在 init 阶段一次性完成。
 
 执行 `/review-fix` 时：
 
@@ -72,6 +73,7 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 - 可以修订已有 draft，也可以从 active 创建 revision draft 后再修订。
 - 读取目标 draft 文件和 `quality_report.md`。
 - 使用 `review_profile_write` 应用修改。
+- 如果用户要求增强数学训练、真题风格、题型模板、单元总结、易混淆点或引申知识，参考 `review-profile-training-assets`。
 - 只有在用户明确确认后，才调用 `review_profile_enable`。
 
 ## 当前知识点索引结构
@@ -107,6 +109,7 @@ description: 跨科目复习助手主技能。用于 /review、/review-init、/r
 
 - `review_card` 用于代码渲染概念卡片。输入字段包括 `subject_id`、`knowledge_point_id` 或 `knowledge_point_name`；返回 `action`、`knowledge_point_id`、`card_found`。`action` 只可能是 `practice`、`next_card`、`skip`、`exit`。
 - `review_exam_points` 用于代码渲染章节考点总结。直接练习模式优先调用它。
+- 如果 profile 中存在 `problem_templates/`，出题时可以优先读取相关模板作为 `source_basis` 的一部分，但仍必须生成当前 `review_answer` 支持的题目 JSON。
 - `review_chapter` 用于代码渲染章节或小节材料。章节学习模式必须先调用它。
 - `review_turn_action` 用于题后续航菜单。`review_archive` 后必须调用。返回动作只包括 `next_question`、`show_card`、`show_chapter`、`summary`、`exit`。
 - `review_answer` 需要结构化题目 JSON，字段包括 `type`、`question_text`、`options`、`correct_answer`、`knowledge_points`、`difficulty`、`explanation_l1`。
