@@ -4,23 +4,30 @@
 
 ## 安装
 
-在 `workspace/` 目录下执行：
+在仓库根目录或 `workspace/` 目录按当前 README 执行安装检查：
 
 ```powershell
 npm install
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent  # 如果尚未安装
 npm run setup-review
+```
+
+或在 `workspace/` 目录下执行：
+
+```powershell
+npm run setup-review
 pi
 ```
 
-安装脚本执行以下最小化项目本地检查：
+安装脚本执行以下最小化检查：
 
-- 验证 `workspace/.pi/extensions/review/index.ts` 存在
-- 验证 `workspace/.pi/skills/review-core/SKILL.md` 存在
-- 验证 `workspace/.pi/skills/review-init/SKILL.md` 存在
-- 验证 `workspace/.pi/skills/review-fix/SKILL.md` 存在
-- 验证 `workspace/.pi/review.config.json` 存在
-- 验证 `workspace/review_profiles/` 存在
+- 验证 `workspace/extensions/review/index.ts` 存在
+- 验证 `workspace/skills/review-core/SKILL.md` 存在
+- 验证 `workspace/skills/review-init/SKILL.md` 存在
+- 验证 `workspace/skills/review-fix/SKILL.md` 存在
+- 验证 `workspace/review.config.json` 存在
+- 验证 bundled demo profile 存在
+- 验证用户数据目录 `~/.pi/agent/review-data` 可写
 - 输出用户下一步可执行的命令
 
 ## 命令
@@ -31,15 +38,15 @@ pi
 
 ## 资料包生命周期
 
-1. `/review-init` 创建 `review_profiles/{subjectId}`，状态为 `draft`。
+1. `/review-init` 在用户数据目录 `~/.pi/agent/review-data/review_profiles/{subjectId}/draft` 创建草稿。
 2. AI 通过 `review_profile_write` 写入规范化文件。
 3. 用户查看 `quality_report.md`。
 4. `/review-fix` 更新 draft，直到用户确认可用。
-5. AI 调用 `review_profile_enable`，然后 `/review` 即可使用该资料包。
+5. AI 调用 `review_profile_enable`，draft 进入同一资料包 family 的 `active` 槽位，然后 `/review` 即可使用该资料包。
 
 ## 构建技能说明
 
-当前实现使用命令提示词 + 受控工具的方式，而非重型安装器。后续可按科目定制的构建技能可添加至此目录，并通过扩展安装脚本复制到 `workspace/.pi/skills/`。
+当前实现使用命令提示词 + 受控工具的方式，而非重型安装器。后续可按科目定制的构建技能可添加至 `workspace/skills/`。
 
 当前构建技能：
 

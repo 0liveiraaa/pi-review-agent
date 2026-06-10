@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 import { getKpIdsForScope } from "../lib/state.mjs";
 import { POST_TURN_ACTIONS, buildReviewStartPrompt, listChapters, listKnowledgePoints, resolveReviewTarget } from "../lib/review_engine.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs";
-import { loadReviewConfig, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
+import { loadReviewConfig, resolveDataRoot, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
 import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
 import {
@@ -108,11 +108,28 @@ test("profile shape rejects chapters without knowledge_points arrays", () => {
   }
 });
 
-test("review config resolves paths from the workspace root", () => {
+test("review config resolves writable paths from the stable user data root", () => {
   const config = loadReviewConfig();
+  const dataRoot = join(homedir(), ".pi", "agent", "review-data");
   assert.equal(WORKSPACE_ROOT, PROJECT_ROOT);
-  assert.equal(config.archiveDirAbs, join(WORKSPACE_ROOT, "archive"));
-  assert.equal(config.profilesDirAbs, join(WORKSPACE_ROOT, "review_profiles"));
+  assert.equal(config.dataRoot, dataRoot);
+  assert.equal(config.archiveDirAbs, join(dataRoot, "archive"));
+  assert.equal(config.profilesDirAbs, join(dataRoot, "review_profiles"));
+});
+
+test("PI_PROJECT_DIR does not change the review data root", () => {
+  const oldProjectDir = process.env.PI_PROJECT_DIR;
+  const oldReviewData = process.env.PI_REVIEW_DATA;
+  try {
+    delete process.env.PI_REVIEW_DATA;
+    process.env.PI_PROJECT_DIR = join(tmpdir(), "some-pi-project");
+    assert.equal(resolveDataRoot(), join(homedir(), ".pi", "agent", "review-data"));
+  } finally {
+    if (oldProjectDir === undefined) delete process.env.PI_PROJECT_DIR;
+    else process.env.PI_PROJECT_DIR = oldProjectDir;
+    if (oldReviewData === undefined) delete process.env.PI_REVIEW_DATA;
+    else process.env.PI_REVIEW_DATA = oldReviewData;
+  }
 });
 
 test("draft profile write is constrained to the profile directory", () => {

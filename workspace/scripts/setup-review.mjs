@@ -136,7 +136,7 @@ for (const searchDir of PROFILE_SEARCH_DIRS) {
   }
 }
 if (profiles.length > 0) {
-  ok(`${profiles.length} review profile(s): ${profiles.join(", ")}`);
+  ok(`${profiles.length} bundled profile template(s): ${profiles.join(", ")}`);
 } else {
   fail("No review profiles found — run /review-init to create one");
 }
@@ -201,8 +201,16 @@ try {
 }
 if (dataRoot !== workspaceRoot) {
   try {
+    ensureDir(dataRoot);
     accessSync(dataRoot, constants.W_OK);
     ok(`Data root: ${rel(dataRoot)} (writable)`);
+    try {
+      const { listActiveProfiles } = await import("../lib/review_profiles.mjs");
+      const activeProfiles = listActiveProfiles().map((profile) => profile.subjectId);
+      ok(`${activeProfiles.length} active user profile(s): ${activeProfiles.join(", ") || "none"}`);
+    } catch {
+      fail("Unable to scan active user profiles");
+    }
   } catch {
     fail(`Data root not writable: ${dataRoot}`);
   }

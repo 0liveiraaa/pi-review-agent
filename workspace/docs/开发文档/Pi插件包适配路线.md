@@ -80,7 +80,7 @@ pi install ./workspace -l
 | `.pi/skills/` | `skills/` | ✅ 已完成 |
 | `.pi/review.config.json` | `review.config.json` (workspace 根) | ✅ 已完成 |
 | `review_profiles/demo-review/` | `profiles/demo-review/` (模板) + `review_profiles/demo-review/` (用户数据) | ✅ 已完成 |
-| 用户数据写死路径 | `DATA_ROOT` 三级解析 (PI_REVIEW_DATA → PI_PROJECT_DIR → PACKAGE_ROOT) | ✅ 已完成 |
+| 用户数据写死路径 | `DATA_ROOT` 稳定解析 (PI_REVIEW_DATA → ~/.pi/agent/review-data) | ✅ 已完成 |
 | 无 pi 包检查 | `npm run check-package` | ✅ 已完成 |
 
 层次 2 最重要的架构点是“包内只读资源”和“用户可写数据”分离：
@@ -98,7 +98,7 @@ pi install ./workspace -l
 
 - npm 元数据：`repository`、`homepage`、`bugs`、`files`、`engines`。
 - 包内容白名单：避免发布 `archive/`、`state/`、用户 profile 草稿、`docs/legacy/`、`node_modules/`。
-- 用户数据目录策略：优先支持项目本地数据目录，同时提供全局用户数据目录兜底。
+- 用户数据目录策略：默认使用全局用户数据目录 `~/.pi/agent/review-data`，只允许 `PI_REVIEW_DATA` 显式覆盖；不再受当前 `PI_PROJECT_DIR` 影响。
 - 首次启动引导：没有 profile 时自动提供 demo profile 或引导 `/review-init`。
 - 包安装验收：`pi install git:...`、`pi install npm:...`、`pi -e ...` 三类路径都要测。
 - 预览资产：按 pi gallery 文档可选添加 `pi.image` 或 `pi.video`。

@@ -12,25 +12,19 @@ export const PROJECT_ROOT = PACKAGE_ROOT;
  * Resolve the user-writable data directory.
  *
  * Priority:
- *   1. PI_REVIEW_DATA env — explicit override
- *   2. PI_PROJECT_DIR env — set by pi-agent for project-local runs
- *   3. PACKAGE_ROOT — local dev (workspace/)
- *   4. ~/.pi/agent/review-data/ — global fallback (pi install path)
+ *   1. PI_REVIEW_DATA env - explicit override for tests or advanced users.
+ *   2. ~/.pi/agent/review-data - stable per-user review data.
+ *
+ * PI_PROJECT_DIR is intentionally ignored here. Pi sets it to the current
+ * working project, but review profiles are user learning data and must stay
+ * visible no matter which project directory starts pi.
  */
 export function resolveDataRoot() {
   if (process.env.PI_REVIEW_DATA) {
     return resolve(process.env.PI_REVIEW_DATA);
   }
-  if (process.env.PI_PROJECT_DIR) {
-    return resolve(process.env.PI_PROJECT_DIR);
-  }
   const agentDir = join(homedir(), ".pi", "agent");
-  // If running from a pi install path, use global data dir
-  if (PACKAGE_ROOT.startsWith(agentDir)) {
-    return join(agentDir, "review-data");
-  }
-  // Local dev: use the workspace directory itself
-  return PACKAGE_ROOT;
+  return join(agentDir, "review-data");
 }
 
 export const DATA_ROOT = resolveDataRoot();

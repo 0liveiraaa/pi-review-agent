@@ -11,6 +11,7 @@ workspace/.pi/
 reference/
 
 # ── Local review profile store ──
+review_profiles/
 workspace/review_profiles/
 
 # ── Python cache ──
