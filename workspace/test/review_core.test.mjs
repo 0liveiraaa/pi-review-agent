@@ -9,7 +9,7 @@ import { POST_TURN_ACTIONS, buildReviewStartPrompt, listChapters, listKnowledgeP
 import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs";
 import { loadReviewConfig, resolveDataRoot, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
-import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
+import { listChapterMaterials, listExamPointFiles, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
 import {
   LEARNING_PROFILE_DIR,
   loadCardProgress,
@@ -490,6 +490,31 @@ test("demo profile is active and supports cards, chapters, and exam points", () 
   assert.ok(listChapterMaterials(profile, "1").length >= 1);
   assert.ok(loadChapterMaterial(profile, { chapterId: "1" })?.content.includes("主动回忆"));
   assert.ok(loadExamPoints(profile, "1")?.[0]?.content.includes("考点清单"));
+});
+
+
+test("chapter material matching does not overmatch decimal section numbers", () => {
+  const root = mkdtempSync(join(tmpdir(), "review-material-match-"));
+  const chaptersDir = join(root, "chapters");
+  const examPointsDir = join(root, "exam_points");
+  try {
+    mkdirSync(chaptersDir, { recursive: true });
+    mkdirSync(examPointsDir, { recursive: true });
+    writeFileSync(join(chaptersDir, "1.1 First.md"), "# 1.1 First\n", "utf-8");
+    writeFileSync(join(chaptersDir, "2.1 Second.md"), "# 2.1 Second\n", "utf-8");
+    writeFileSync(join(chaptersDir, "10.1 Tenth.md"), "# 10.1 Tenth\n", "utf-8");
+    writeFileSync(join(examPointsDir, "1 First.md"), "# Exam 1\n", "utf-8");
+    writeFileSync(join(examPointsDir, "10 Tenth.md"), "# Exam 10\n", "utf-8");
+
+    const profile = { chaptersDir, examPointsDir };
+    assert.deepEqual(listChapterMaterials(profile, "1").map((item) => item.title), ["1.1 First"]);
+    assert.deepEqual(listChapterMaterials(profile, "2").map((item) => item.title), ["2.1 Second"]);
+    assert.deepEqual(listChapterMaterials(profile, "10").map((item) => item.title), ["10.1 Tenth"]);
+    assert.deepEqual(listExamPointFiles(profile, "1").map((item) => item.title), ["Exam 1"]);
+    assert.deepEqual(listExamPointFiles(profile, "10").map((item) => item.title), ["Exam 10"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("demo-review seed profile is always active in release state", () => {

@@ -28,7 +28,7 @@ function titleFromMarkdown(path) {
 function chapterMatch(path, chapterId) {
   const name = basename(path);
   const escaped = String(chapterId || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^0-9])${escaped}([.\\-章]|[^0-9]|$)`).test(name);
+  return new RegExp(`^(?:\u7b2c\s*)?${escaped}(?:\s*\u7ae0|[.\\-\\s]|$)`).test(name);
 }
 
 export function listChapterMaterials(profile, chapterId = "") {
