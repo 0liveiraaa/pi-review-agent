@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { getKpIdsForScope } from "../lib/state.mjs";
-import { buildReviewStartPrompt, listChapters, listKnowledgePoints, resolveReviewTarget } from "../lib/review_engine.mjs";
+import { POST_TURN_ACTIONS, buildReviewStartPrompt, listChapters, listKnowledgePoints, resolveReviewTarget } from "../lib/review_engine.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs";
 import { loadReviewConfig, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
@@ -297,6 +297,22 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(extensionSource, /\/skill:review-init/);
   assert.match(extensionSource, /\/skill:review-fix/);
   assert.match(extensionSource, /injectReviewCore/);
+  assert.doesNotMatch(extensionSource, /increase_difficulty/);
+});
+
+test("post-turn action menu only exposes continuation actions", () => {
+  const actions = POST_TURN_ACTIONS.map((item) => item.value);
+  assert.deepEqual(actions, ["next_question", "show_card", "show_chapter", "summary", "exit"]);
+  assert.ok(!actions.includes("hint"));
+  assert.ok(!actions.includes("discuss"));
+  assert.ok(!actions.includes("increase_difficulty"));
+
+  const extensionSource = readFileSync(join(WORKSPACE_ROOT, "extensions/review/index.ts"), "utf-8");
+  assert.match(extensionSource, /next_question/);
+  assert.match(extensionSource, /show_card/);
+  assert.match(extensionSource, /show_chapter/);
+  assert.match(extensionSource, /summary/);
+  assert.match(extensionSource, /exit/);
   assert.doesNotMatch(extensionSource, /increase_difficulty/);
 });
 
