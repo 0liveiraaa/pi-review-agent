@@ -159,6 +159,59 @@ if (existsSync(legacyLocalExtension)) {
   ok("No legacy workspace/.pi extension entry");
 }
 
+// ─── 2d. Skill/Template sync check ───
+{
+  const skillsDir = join(packageRoot, "skills");
+  const templateDir = join(packageRoot, "docs", "review-kit", "skills");
+  const ALL_SKILL_DIRS = [
+    "review-core", "review-discuss", "review-fix", "review-grade",
+    "review-init", "review-profile-cards", "review-profile-exam-points",
+    "review-profile-index", "review-profile-quality", "review-profile-structure",
+    "review-profile-training-assets", "review-question", "review-summary",
+  ];
+
+  let skillCount = 0;
+  let synced = 0;
+  let different = 0;
+  let missingInSkills = 0;
+  let missingInTemplates = 0;
+
+  const hasTemplates = existsSync(templateDir);
+  if (!hasTemplates) {
+    warn("Template directory not found (workspace/docs/review-kit/skills/) — skip sync check");
+  }
+
+  for (const dir of ALL_SKILL_DIRS) {
+    const skillPath = join(skillsDir, dir, "SKILL.md");
+    const templatePath = join(templateDir, dir, "SKILL.md");
+    const inSkills = existsSync(skillPath);
+    const inTemplates = hasTemplates && existsSync(templatePath);
+
+    if (inSkills) skillCount++;
+    else { missingInSkills++; fail(`Skill directory missing: ${dir}/SKILL.md`); }
+
+    if (!inTemplates) { missingInTemplates++; continue; }
+
+    const sContent = readFileSync(skillPath, "utf-8");
+    const tContent = readFileSync(templatePath, "utf-8");
+    if (sContent === tContent) {
+      synced++;
+    } else {
+      different++;
+      warn(`Skill out of sync: ${dir}/SKILL.md differs from template (docs/review-kit/skills/${dir}/SKILL.md)`);
+    }
+  }
+
+  ok(`${skillCount} skill directories found`);
+  if (hasTemplates) {
+    const total = ALL_SKILL_DIRS.length - missingInTemplates;
+    ok(`Skill/template sync: ${synced}/${total} in sync, ${different} different`);
+    if (missingInTemplates > 0) {
+      warn(`${missingInTemplates} skill(s) missing from docs/review-kit/skills/`);
+    }
+  }
+}
+
 // ─── 3. Publish blacklist check ───
 console.log("");
 console.log("━".repeat(50));

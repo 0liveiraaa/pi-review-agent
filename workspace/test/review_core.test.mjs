@@ -9,7 +9,9 @@ import { POST_TURN_ACTIONS, buildReviewStartPrompt, listChapters, listKnowledgeP
 import { normalizeQuestion, parseChoiceAnswer } from "../lib/review_question.mjs";
 import { loadReviewConfig, resolveDataRoot, WORKSPACE_ROOT, PROJECT_ROOT } from "../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
+import { getChapterSectionsFromDir } from "../lib/chapters.mjs";
 import { listChapterMaterials, listExamPointFiles, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
+import { buildDoctorReport } from "../scripts/doctor.mjs";
 import {
   LEARNING_PROFILE_DIR,
   loadCardProgress,
@@ -115,6 +117,69 @@ test("review config resolves writable paths from the stable user data root", () 
   assert.equal(config.dataRoot, dataRoot);
   assert.equal(config.archiveDirAbs, join(dataRoot, "archive"));
   assert.equal(config.profilesDirAbs, join(dataRoot, "review_profiles"));
+});
+
+test("doctor reports review data roots, profile user dirs, and duplicate registration hints", () => {
+  const root = mkdtempSync(join(tmpdir(), "review-doctor-"));
+  const home = join(root, "home");
+  const dataRoot = join(root, "review-data");
+  const workspace = join(root, "workspace");
+  const repoRoot = root;
+  try {
+    mkdirSync(join(dataRoot, "review_profiles", "lisan", "active"), { recursive: true });
+    mkdirSync(join(dataRoot, "review_profiles", "lisan", "_user"), { recursive: true });
+    mkdirSync(join(workspace, "extensions", "review"), { recursive: true });
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+
+    writeJson(join(dataRoot, "review_profiles", "lisan", "active", "profile.json"), {
+      subjectId: "lisan",
+      name: "Lisan",
+      status: "active",
+      paths: {
+        subject: "subject.md",
+        knowledgeIndex: "knowledge_index.json",
+        cards: "cards",
+        chapters: "chapters",
+        examPoints: "exam_points",
+        sourceMap: "source_map.json",
+        qualityReport: "quality_report.md",
+      },
+    });
+    writeJson(join(home, ".pi", "agent", "settings.json"), {
+      packages: ["git:git@github.com:0liveiraaa/pi-review-agent"],
+    });
+    writeFileSync(join(workspace, "extensions", "review", "index.ts"), "export default function() {}\n", "utf-8");
+    writeJson(join(workspace, "package.json"), {
+      name: "pi-review",
+      scripts: { doctor: "node scripts/doctor.mjs" },
+      pi: { extensions: ["./extensions/review"] },
+    });
+    writeJson(join(repoRoot, "package.json"), {
+      name: "pi-review-agent",
+      pi: { extensions: ["./workspace/extensions/review/index.ts"] },
+    });
+
+    const report = buildDoctorReport({
+      config: {
+        dataRoot,
+        profilesDirAbs: join(dataRoot, "review_profiles"),
+        archiveDirAbs: join(dataRoot, "archive"),
+        stateDirAbs: join(dataRoot, "state"),
+      },
+      workspaceRoot: workspace,
+      repoRoot,
+      homeDir: home,
+    });
+
+    assert.equal(report.paths.dataRoot.path, dataRoot);
+    assert.equal(report.paths.dataRoot.writable, true);
+    assert.equal(report.profiles.find((profile) => profile.subjectId === "lisan")?.userWritable, true);
+    assert.ok(report.registration.sources.some((source) => source.kind === "settings-package"));
+    assert.ok(report.registration.sources.some((source) => source.kind === "workspace-package"));
+    assert.equal(report.registration.hasDuplicateRisk, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("PI_PROJECT_DIR does not change the review data root", () => {
@@ -547,6 +612,22 @@ test("chapter material matching does not overmatch decimal section numbers", () 
     assert.deepEqual(listChapterMaterials(profile, "10").map((item) => item.title), ["10.1 Tenth"]);
     assert.deepEqual(listExamPointFiles(profile, "1").map((item) => item.title), ["Exam 1"]);
     assert.deepEqual(listExamPointFiles(profile, "10").map((item) => item.title), ["Exam 10"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("chapter section scanner supports flat profile chapter directories without frontmatter", () => {
+  const root = mkdtempSync(join(tmpdir(), "review-flat-chapters-"));
+  try {
+    writeFileSync(join(root, "1.1 整除基本概念.md"), "# 整除基本概念\n", "utf-8");
+    writeFileSync(join(root, "1.2 最高公因数.md"), "# 最高公因数\n", "utf-8");
+    writeFileSync(join(root, "10.1 Other.md"), "# Other\n", "utf-8");
+
+    const sections = getChapterSectionsFromDir("1", root);
+    assert.deepEqual(sections.map((section) => section.lesson), ["1.1", "1.2"]);
+    assert.deepEqual(sections.map((section) => section.title), ["整除基本概念", "最高公因数"]);
+    assert.ok(sections.every((section) => section.filePath.endsWith(".md")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

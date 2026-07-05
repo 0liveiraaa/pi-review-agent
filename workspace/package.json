@@ -34,10 +34,12 @@
   },
   "scripts": {
     "setup-review": "node scripts/setup-review.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "reset-demo-profile": "node scripts/reset-demo-profile.mjs",
     "migrate-profile-family": "node scripts/migrate-profile-family.mjs",
     "check-package": "node scripts/check-package.mjs",
-    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs && node --check scripts/reset-demo-profile.mjs && node --check scripts/migrate-profile-family.mjs && node --check scripts/check-package.mjs",
+    "profile-doctor": "node scripts/profile-doctor.mjs",
+    "check": "node --check lib/state.mjs && node --check lib/review_question.mjs && node --check lib/review_engine.mjs && node --check lib/review_profiles.mjs && node --check lib/review_materials.mjs && node --check lib/review_config.mjs && node --check lib/cards.mjs && node --check lib/chapters.mjs && node --check scripts/setup-review.mjs && node --check scripts/doctor.mjs && node --check scripts/reset-demo-profile.mjs && node --check scripts/migrate-profile-family.mjs && node --check scripts/check-package.mjs && node --check scripts/profile-doctor.mjs",
     "test": "node --test test/review_core.test.mjs"
   },
   "dependencies": {

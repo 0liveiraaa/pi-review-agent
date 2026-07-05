@@ -1,6 +1,6 @@
 // 章节笔记解析 — 扫描 01-章节笔记/
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import { NOTE_DIR } from "./state.mjs";
 
 /**
@@ -14,20 +14,14 @@ export function getChapterSectionsFromDir(chapterId, noteDir = NOTE_DIR) {
   const sections = [];
   if (!existsSync(noteDir)) return sections;
 
-  const prefix = `${chapterId}.`;
-  for (const subdir of readdirSync(noteDir)) {
-    const subPath = join(noteDir, subdir);
-    if (!existsSync(subPath)) continue;
-    if (!statSync(subPath).isDirectory()) continue;
-    try {
-      const files = readdirSync(subPath);
-      for (const f of files) {
-        if (!f.endsWith(".md") || !f.startsWith(prefix)) continue;
-        const fullPath = join(subPath, f);
-        const { lesson, title } = parseFrontmatter(fullPath);
-        if (lesson) sections.push({ lesson, title, filePath: fullPath });
-      }
-    } catch { /* skip inaccessible dirs */ }
+  const chapter = String(chapterId || "").trim();
+  const prefix = `${chapter}.`;
+  for (const fullPath of findChapterMarkdownFiles(noteDir, prefix)) {
+    const parsed = parseFrontmatter(fullPath);
+    const fallback = parseChapterFilename(fullPath, prefix);
+    const lesson = parsed.lesson || fallback.lesson;
+    const title = parsed.title || fallback.title;
+    if (lesson) sections.push({ lesson, title, filePath: fullPath });
   }
 
   sections.sort((a, b) => {
@@ -36,6 +30,34 @@ export function getChapterSectionsFromDir(chapterId, noteDir = NOTE_DIR) {
     return aCh - bCh || aSec - bSec;
   });
   return sections;
+}
+
+function findChapterMarkdownFiles(dir, prefix) {
+  const out = [];
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out.push(...findChapterMarkdownFiles(fullPath, prefix));
+      } else if (entry.isFile() && entry.name.endsWith(".md") && entry.name.startsWith(prefix)) {
+        out.push(fullPath);
+      }
+    }
+  } catch {
+    // Skip inaccessible directories; callers treat missing sections as empty.
+  }
+  return out;
+}
+
+function parseChapterFilename(filePath, prefix) {
+  const stem = basename(filePath, ".md");
+  if (!stem.startsWith(prefix)) return { lesson: "", title: "" };
+  const match = stem.match(/^(\d+(?:\.\d+)+)\s*(.*)$/);
+  if (!match) return { lesson: "", title: "" };
+  return {
+    lesson: match[1],
+    title: match[2]?.trim() || stem,
+  };
 }
 
 function parseFrontmatter(filePath) {

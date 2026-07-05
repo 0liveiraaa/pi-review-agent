@@ -50,7 +50,7 @@ function copyDirRecursive(source, target, options = {}) {
   }
 }
 
-function cleanSubjectId(value) {
+export function cleanSubjectId(value) {
   const id = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   if (!id) throw new Error("subjectId is required.");
   return id;
@@ -500,6 +500,236 @@ export function scanSourceFiles(sourceDir, limit = 80) {
   };
   walk(base);
   return out;
+}
+
+/**
+ * Audit a profile family (dry-run only).
+ * Returns a diagnostics object without modifying anything.
+ */
+export function auditProfileFamily(subjectId, config = loadReviewConfig()) {
+  const id = cleanSubjectId(subjectId);
+  const familyRoot = getProfileFamilyRoot(id, config);
+  const issues = [];
+  const summary = { familyRoot, subjectId: id };
+
+  if (!existsSync(familyRoot)) {
+    return { familyRoot, subjectId: id, issues: [{ severity: "error", message: `Profile family not found: ${familyRoot}` }], summary };
+  }
+
+  // Collect family structure
+  const activeRoot = join(familyRoot, ACTIVE_SLOT);
+  const draftRoot = join(familyRoot, DRAFT_SLOT);
+  const archivedRoot = join(familyRoot, ARCHIVED_SLOT);
+  const userRoot = join(familyRoot, "_user");
+
+  const activeProfile = existsSync(join(activeRoot, PROFILE_FILE)) ? readJSON(join(activeRoot, PROFILE_FILE)) : null;
+  const draftProfile = existsSync(join(draftRoot, PROFILE_FILE)) ? readJSON(join(draftRoot, PROFILE_FILE)) : null;
+  const legacyProfile = !activeProfile && !draftProfile && existsSync(join(familyRoot, PROFILE_FILE))
+    ? readJSON(join(familyRoot, PROFILE_FILE)) : null;
+
+  const archivedEntries = existsSync(archivedRoot)
+    ? readdirSync(archivedRoot, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
+    : [];
+
+  summary.active = Boolean(activeProfile);
+  summary.draft = Boolean(draftProfile);
+  summary.legacy = Boolean(legacyProfile);
+  summary.archivedCount = archivedEntries.length;
+  summary.userFiles = existsSync(userRoot) ? readdirSync(userRoot).length : 0;
+
+  // ── Check each profile for legacy fields ──
+  const profilesToCheck = [
+    { label: "active", data: activeProfile, root: activeRoot },
+    { label: "draft", data: draftProfile, root: draftRoot },
+    { label: "legacy", data: legacyProfile, root: familyRoot },
+  ];
+
+  for (const { label, data } of profilesToCheck) {
+    if (!data) continue;
+
+    // Old revisionNumber (should be "revision")
+    if (data.revisionNumber !== undefined) {
+      issues.push({ severity: "warning", slot: label, field: "revisionNumber", message: `Legacy field "revisionNumber"=${data.revisionNumber} (use "revision" instead)` });
+    }
+
+    // legacySubjectId
+    if (data.legacySubjectId) {
+      issues.push({ severity: "warning", slot: label, field: "legacySubjectId", message: `Legacy field "legacySubjectId"="${data.legacySubjectId}"` });
+    }
+
+    // Nested __draft_ chains in subjectId
+    const rawId = data.subjectId || "";
+    const draftMatches = rawId.match(/__draft_\d{8}(?:__draft_\d{8})+/i);
+    if (draftMatches) {
+      issues.push({ severity: "warning", slot: label, field: "subjectId", message: `Nested __draft_ chain in subjectId: "${rawId}" (${draftMatches[0]})` });
+    }
+
+    // legacy slot value
+    if (data.slot === "legacy") {
+      issues.push({ severity: "info", slot: label, field: "slot", message: "Legacy layout profile (no active/draft slot structure)" });
+    }
+
+    // revision field wrong type
+    if (data.revision !== undefined && typeof data.revision !== "number") {
+      issues.push({ severity: "warning", slot: label, field: "revision", message: `"revision" has wrong type: ${typeof data.revision}` });
+    }
+
+    // supersededBy present but no supersededAt
+    if (data.supersededBy && !data.supersededAt) {
+      issues.push({ severity: "info", slot: label, field: "supersededBy", message: `Has "supersededBy" but no "supersededAt" timestamp` });
+    }
+  }
+
+  // ── Check archived inflation ──
+  if (archivedEntries.length > 3) {
+    issues.push({ severity: "warning", slot: "archived", field: "count", message: `Archived inflated: ${archivedEntries.length} entries (consider pruning old versions)` });
+  }
+
+  // Check for nested __draft_ chains in archived dir names
+  for (const entry of archivedEntries) {
+    if (entry.match(/__draft_\d{8}(?:__draft_\d{8})+/i)) {
+      issues.push({ severity: "warning", slot: "archived", field: "entry", message: `Archived directory has nested __draft_ chain: "${entry}"` });
+    }
+  }
+
+  // ── Check orphan directories at family root ──
+  const reserved = new Set([ACTIVE_SLOT, DRAFT_SLOT, ARCHIVED_SLOT, "_user"]);
+  if (existsSync(familyRoot)) {
+    for (const entry of readdirSync(familyRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || reserved.has(entry.name) || entry.name.startsWith("_")) continue;
+      // Check if it looks like a stray card/chapter/exam_points dir
+      if (entry.name.startsWith("cards") || entry.name.startsWith("chapters") || entry.name.startsWith("exam_points")) {
+        issues.push({ severity: "info", slot: "family-root", field: "stray-dir", message: `Orphan directory at family root: "${entry.name}" (not inside active/draft slot)` });
+      } else if (!["profile.json", "subject.md", "knowledge_index.json", "source_map.json", "quality_report.md"].includes(entry.name)) {
+        issues.push({ severity: "info", slot: "family-root", field: "stray-dir", message: `Unexpected directory at family root: "${entry.name}"` });
+      }
+    }
+  }
+
+  // ── Extra files directly at family root that are not profile files ──
+  if (existsSync(familyRoot)) {
+    for (const entry of readdirSync(familyRoot, { withFileTypes: true })) {
+      if (entry.isFile() && !reserved.has(entry.name) && !entry.name.startsWith(".") &&
+          !["profile.json", "subject.md", "knowledge_index.json", "source_map.json", "quality_report.md"].includes(entry.name)) {
+        issues.push({ severity: "info", slot: "family-root", field: "stray-file", message: `Unexpected file at family root: "${entry.name}"` });
+      }
+    }
+  }
+
+  // ── Orphan _nt directories inside active slot ──
+  if (activeProfile) {
+    for (const suffix of ["_nt", "_old", "_bak", "_legacy"]) {
+      for (const base of ["cards", "chapters", "exam_points"]) {
+        const dir = join(activeRoot, base + suffix);
+        if (existsSync(dir)) {
+          const count = readdirSync(dir).length;
+          issues.push({ severity: "info", slot: "active", field: "stray-subdir", message: `Stray "${base}${suffix}/" in active slot (${count} files) — not referenced by profile paths` });
+        }
+      }
+    }
+  }
+
+  // Sort issues by severity
+  const severityOrder = { error: 0, warning: 1, info: 2 };
+  issues.sort((a, b) => (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9));
+  summary.issueCount = issues.length;
+  summary.warningCount = issues.filter((i) => i.severity === "warning").length;
+  summary.infoCount = issues.filter((i) => i.severity === "info").length;
+
+  return { issues, summary };
+}
+
+/**
+ * Plan a dry-run prune for a profile family.
+ * Reports what would be kept vs cleaned, without making changes.
+ */
+export function planPruneFamily(subjectId, config = loadReviewConfig()) {
+  const id = cleanSubjectId(subjectId);
+  const audit = auditProfileFamily(subjectId, config);
+  const familyRoot = getProfileFamilyRoot(id, config);
+  const prunePlan = { subjectId: id, familyRoot, keep: [], clean: [], reasons: [] };
+
+  // Keep active always
+  const activeRoot = getActiveProfileRoot(id, config);
+  if (existsSync(join(activeRoot, PROFILE_FILE))) {
+    prunePlan.keep.push({ path: activeRoot, reason: "Current active profile" });
+  }
+
+  // Keep current draft
+  const draftRoot = getDraftProfileRoot(id, config);
+  if (existsSync(join(draftRoot, PROFILE_FILE))) {
+    prunePlan.keep.push({ path: draftRoot, reason: "Current draft profile (in progress)" });
+  }
+
+  // Archived: keep latest 3, flag older for pruning
+  const archivedRoot = getArchivedProfilesRoot(id, config);
+  if (existsSync(archivedRoot)) {
+    const archivedDirs = readdirSync(archivedRoot, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => ({ name: d.name, path: join(archivedRoot, d.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // chronological sort
+
+    // Keep latest 3, suggest cleaning older ones
+    const toKeep = archivedDirs.slice(-3);
+    const toClean = archivedDirs.slice(0, -3);
+    for (const entry of toKeep) {
+      prunePlan.keep.push({ path: entry.path, reason: `Archived version (${entry.name}) — latest 3 kept` });
+    }
+    for (const entry of toClean) {
+      prunePlan.clean.push({ path: entry.path, reason: `Old archived version (${entry.name}) — eligible for cleanup` });
+    }
+
+    // Flag archived dirs with nested __draft_ chains
+    for (const entry of archivedDirs) {
+      if (entry.name.match(/__draft_\d{8}(?:__draft_\d{8})+/i)) {
+        prunePlan.reasons.push({ path: entry.path, reason: `Nested __draft_ chain in directory name: "${entry.name}" — consider pruning` });
+      }
+    }
+  }
+
+  // Stray family-root directories (old legacy artifacts)
+  const reserved = new Set([ACTIVE_SLOT, DRAFT_SLOT, ARCHIVED_SLOT, "_user"]);
+  if (existsSync(familyRoot)) {
+    for (const entry of readdirSync(familyRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || reserved.has(entry.name) || entry.name.startsWith("_")) continue;
+      const fullPath = join(familyRoot, entry.name);
+      if (entry.name.startsWith("cards") || entry.name.startsWith("chapters") || entry.name.startsWith("exam_points")) {
+        prunePlan.clean.push({ path: fullPath, reason: `Stray "${entry.name}" at family root — likely old artifact` });
+      }
+    }
+  }
+
+  // Stray _nt / _old dirs inside active slot
+  const activeRootPath = getActiveProfileRoot(id, config);
+  if (existsSync(activeRootPath)) {
+    for (const suffix of ["_nt", "_old", "_bak", "_legacy"]) {
+      for (const base of ["cards", "chapters", "exam_points"]) {
+        const dir = join(activeRootPath, base + suffix);
+        if (existsSync(dir)) {
+          prunePlan.clean.push({ path: dir, reason: `Stray "${base}${suffix}/" inside active slot — not referenced by profile` });
+        }
+      }
+    }
+  }
+
+  // Legacy loose files at family root (profile.json, subject.md etc outside slots)
+  if (existsSync(familyRoot)) {
+    const legacyRootFile = join(familyRoot, PROFILE_FILE);
+    if (existsSync(legacyRootFile) && !existsSync(join(activeRoot, PROFILE_FILE)) && !existsSync(join(draftRoot, PROFILE_FILE))) {
+      prunePlan.keep.push({ path: legacyRootFile, reason: "Legacy profile at family root (only profile file)" });
+    } else if (existsSync(legacyRootFile)) {
+      // If slotted profiles exist too, the root profile.json is likely a leftover
+      prunePlan.clean.push({ path: legacyRootFile, reason: "Legacy profile.json at family root (slotted profiles exist)" });
+    }
+  }
+
+  prunePlan.summary = {
+    keep: prunePlan.keep.length,
+    clean: prunePlan.clean.length,
+    reasons: prunePlan.reasons.length,
+  };
+
+  return { audit, prunePlan };
 }
 
 export function assertValidProfileShape(subjectId, config = loadReviewConfig()) {
