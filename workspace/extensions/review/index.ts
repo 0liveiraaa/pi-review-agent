@@ -27,6 +27,7 @@ import { loadReviewConfig } from "../../lib/review_config.mjs";
 import { PACKAGE_ROOT } from "../../lib/review_config.mjs";
 import { buildCardQueue, loadProfileCard } from "../../lib/cards.mjs";
 import { listChapterMaterials, loadChapterMaterial, loadExamPoints } from "../../lib/review_materials.mjs";
+import { createReviewSingleTurnGraph } from "../../lib/review_loop_graph.mjs";
 import { normalizeQuestion, parseChoiceAnswer } from "../../lib/review_question.mjs";
 import {
   createDraftProfile,
@@ -941,9 +942,22 @@ function createReviewAutocompleteProvider(current: AutocompleteProvider): Autoco
   };
 }
 
-export default function reviewExtension(pi: ExtensionAPI): void {
+async function registerReviewLoopGraph(pi: ExtensionAPI): Promise<void> {
+  try {
+    const sdk = await import("pi-loop-graph-sdk/src/index.ts");
+    const graph = createReviewSingleTurnGraph(sdk);
+    sdk.registerGraph(pi, graph);
+  } catch (err: any) {
+    pi.on("session_start", async (_event, ctx) => {
+      ctx.ui.notify(`Loop Graph SDK not available; /review-turn disabled: ${err?.message || String(err)}`, "warning");
+    });
+  }
+}
+
+export default async function reviewExtension(pi: ExtensionAPI): Promise<void> {
   const config = loadReviewConfig();
   const reviewCoreText = loadReviewCoreText();
+  await registerReviewLoopGraph(pi);
 
   pi.registerCommand("review", {
     description: "Start the course review assistant",

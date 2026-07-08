@@ -12,6 +12,10 @@ Pi Review Agent is a pi-agent package that adds a structured course review assis
 
 The bundled real profile is for C++ Object-Oriented Programming (`cpp-oop`), and there is also a smaller `demo-review` profile.
 
+## Communication Preference
+
+When discussing design in this repository, prefer clear Chinese explanations over vague shorthand. Avoid unclear filler terms such as "收口" and "事务" unless quoting existing text. Use English terms only when they are established project terms or API names.
+
 ## Pi-Agent Development Reference
 
 For pi-agent SDK, extension, package, and TUI details, use the installed package as the local source of truth:
@@ -89,6 +93,18 @@ There is currently no `workspace/.pi` directory. Do not assume the extension liv
 - `workspace/lib/review_materials.mjs`, `cards.mjs`, and `chapters.mjs` load cards, chapter notes, exam points, and related materials.
 - `workspace/lib/state.mjs` handles learning state support.
 - `workspace/docs/legacy/` contains legacy CLI material. Treat it as reference, not the supported runtime path.
+
+## Skill Loop Design Direction
+
+Current runtime behavior is still command + prompt + tool based. The accepted design direction in `workspace/docs/开发文档/adr/0004-skill-loop-sdk-overlay.md` is to build a Skill Loop SDK around graph-first agent systems:
+
+- Loop graphs are the core abstraction.
+- Nodes perform work and maintain their relevant state.
+- Edges carry state transitions between nodes.
+- Runtime drives nodes and edges, records evidence, and can enter reusable exception diagnosis graphs.
+- Agent decisions are allowed inside nodes and, where useful, in edge selection, but key actions must be verifiable by code.
+
+When planning this work, preserve current data compatibility first, then add explicit migration or doctor flows for older profile structures.
 
 ## Registered Review Tools
 

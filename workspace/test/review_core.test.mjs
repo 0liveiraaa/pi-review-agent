@@ -11,6 +11,7 @@ import { loadReviewConfig, resolveDataRoot, WORKSPACE_ROOT, PROJECT_ROOT } from 
 import { buildCardQueue, loadProfileCard, normalizeCardMarkdown } from "../lib/cards.mjs";
 import { getChapterSectionsFromDir } from "../lib/chapters.mjs";
 import { listChapterMaterials, listExamPointFiles, loadChapterMaterial, loadExamPoints } from "../lib/review_materials.mjs";
+import { reviewSingleTurnGraph } from "../lib/review_loop_graph.mjs";
 import { buildDoctorReport } from "../scripts/doctor.mjs";
 import {
   LEARNING_PROFILE_DIR,
@@ -379,7 +380,37 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(extensionSource, /\/skill:review-init/);
   assert.match(extensionSource, /\/skill:review-fix/);
   assert.match(extensionSource, /injectReviewCore/);
+  assert.match(extensionSource, /createReviewSingleTurnGraph/);
+  assert.match(extensionSource, /registerGraph/);
   assert.doesNotMatch(extensionSource, /increase_difficulty/);
+});
+
+test("single-turn review graph preserves required review actions", () => {
+  assert.equal(reviewSingleTurnGraph.id, "review_single_turn");
+  assert.equal(reviewSingleTurnGraph.entries[0].startNodeId, "prepare_review_turn");
+  assert.deepEqual(Object.keys(reviewSingleTurnGraph.nodes), [
+    "prepare_review_turn",
+    "show_material",
+    "generate_question",
+    "answer_question",
+    "grade_answer",
+    "archive_turn",
+    "choose_turn_action",
+  ]);
+
+  const prepareEdges = reviewSingleTurnGraph.routing.prepare_review_turn.edges.map((edge) => edge.to);
+  assert.deepEqual(prepareEdges, ["show_material", "generate_question"]);
+  assert.deepEqual(reviewSingleTurnGraph.routing.grade_answer.edges.map((edge) => edge.to), ["archive_turn"]);
+  assert.deepEqual(reviewSingleTurnGraph.routing.archive_turn.edges.map((edge) => edge.to), ["choose_turn_action"]);
+
+  assert.deepEqual(reviewSingleTurnGraph.nodes.show_material.tools, [
+    "review_card",
+    "review_exam_points",
+    "review_chapter",
+  ]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.answer_question.tools, ["review_answer"]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.archive_turn.tools, ["review_archive"]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.choose_turn_action.tools, ["review_turn_action"]);
 });
 
 test("post-turn action menu only exposes continuation actions", () => {

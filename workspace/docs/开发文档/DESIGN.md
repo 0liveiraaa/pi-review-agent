@@ -26,13 +26,13 @@
 
 ### 交互边界
 
-| 特点 | 说明 |
-|------|------|
-| **Extension 驱动** | 命令和工具通过 `pi.registerCommand()` / `pi.registerTool()` 注册 |
-| **代码渲染 UI** | 卡片、章节、考点、题后菜单由代码工具渲染，agent 只负责生成题目内容和判题 |
-| **Profile 生命周期** | `draft → active → archived`，修订 active 时自动创建 draft 副本 |
-| **Skill 注入** | `review-core` 主规则强制注入每个命令 prompt，子 skill 按阶段参考 |
-| **Typebox 校验** | 所有工具参数用 `Type.Object()` 做运行时 JSON schema 校验 |
+| 特点                       | 说明                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| **Extension 驱动**   | 命令和工具通过`pi.registerCommand()` / `pi.registerTool()` 注册      |
+| **代码渲染 UI**      | 卡片、章节、考点、题后菜单由代码工具渲染，agent 只负责生成题目内容和判题 |
+| **Profile 生命周期** | `draft → active → archived`，修订 active 时自动创建 draft 副本       |
+| **Skill 注入**       | `review-core` 主规则强制注入每个命令 prompt，子 skill 按阶段参考       |
+| **Typebox 校验**     | 所有工具参数用`Type.Object()` 做运行时 JSON schema 校验                |
 
 ## 2. Package 布局
 
@@ -79,27 +79,27 @@ workspace/
 
 ### 3.1 注册的命令
 
-| 命令 | 触发 | 流程 |
-|------|------|------|
-| `/review` | 用户输入 | TUI 选择 profile → 展示学习画像 → 模式 → 范围 → 题型 → 难度 → 发送 prompt 给 agent |
-| `/review-init` | 用户输入 | 输入源目录和科目名 → 创建 draft profile → 发送 init prompt 给 agent |
-| `/review-fix` | 用户输入 | 选择 profile → 输入反馈 → active 则先创建 revision draft → 发送 fix prompt 给 agent |
+| 命令             | 触发     | 流程                                                                                     |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `/review`      | 用户输入 | TUI 选择 profile → 展示学习画像 → 模式 → 范围 → 题型 → 难度 → 发送 prompt 给 agent |
+| `/review-init` | 用户输入 | 输入源目录和科目名 → 创建 draft profile → 发送 init prompt 给 agent                    |
+| `/review-fix`  | 用户输入 | 选择 profile → 输入反馈 → active 则先创建 revision draft → 发送 fix prompt 给 agent   |
 
 所有命令 prompt 都通过 `injectReviewCore()` 强制注入 `review-core` 主规则。
 
 ### 3.2 注册的工具
 
-| 工具 | agent 角色中调用 | 职责 |
-|------|-----------------|------|
-| `review_card` | 模式 1 出题前 | 在 TUI 中渲染知识点卡片，返回 `practice/next_card/skip/exit` |
-| `review_exam_points` | 模式 2 出题前 | 渲染章节考点总结，返回 `practice/skip/exit` |
-| `review_chapter` | 模式 3 出题前 | 渲染章节或小节材料，返回 `practice/next_section/skip/exit` |
-| `review_answer` | 出题后 | 滚动渲染完整结构化题目并收集用户答案，答题中可请求提示/追问 |
-| `review_archive` | 判题+讨论后 | 归档题目答案，更新进度/错题本/知识链 |
-| `review_turn_action` | 归档后**必须**调用 | 显示题后续航菜单（下一题/看卡片/看章节/总结/退出） |
-| `review_summary` | 用户要求总结时 | 保存 session 总结报告，并更新该科目的学习画像 |
-| `review_profile_write` | 初始化/修订时 | 安全写入 draft profile 文件（拒绝非 draft） |
-| `review_profile_enable` | 用户确认启用时 | 将 draft 切换为 active（替换 active 时归档原版） |
+| 工具                      | agent 角色中调用         | 职责                                                          |
+| ------------------------- | ------------------------ | ------------------------------------------------------------- |
+| `review_card`           | 模式 1 出题前            | 在 TUI 中渲染知识点卡片，返回`practice/next_card/skip/exit` |
+| `review_exam_points`    | 模式 2 出题前            | 渲染章节考点总结，返回`practice/skip/exit`                  |
+| `review_chapter`        | 模式 3 出题前            | 渲染章节或小节材料，返回`practice/next_section/skip/exit`   |
+| `review_answer`         | 出题后                   | 滚动渲染完整结构化题目并收集用户答案，答题中可请求提示/追问   |
+| `review_archive`        | 判题+讨论后              | 归档题目答案，更新进度/错题本/知识链                          |
+| `review_turn_action`    | 归档后**必须**调用 | 显示题后续航菜单（下一题/看卡片/看章节/总结/退出）            |
+| `review_summary`        | 用户要求总结时           | 保存 session 总结报告，并更新该科目的学习画像                 |
+| `review_profile_write`  | 初始化/修订时            | 安全写入 draft profile 文件（拒绝非 draft）                   |
+| `review_profile_enable` | 用户确认启用时           | 将 draft 切换为 active（替换 active 时归档原版）              |
 
 ### 3.3 工具契约
 
@@ -189,11 +189,11 @@ review_profiles/{subjectId}/
 
 ### 5.1 三种模式
 
-| 模式 | ID | 前置代码工具 | 流程 |
-|------|-----|-------------|------|
-| 概念卡片+练习 | `card_practice` | `review_card` | 卡片展示 → 生成题目 → `review_answer` → 判题 → 讨论 → `review_archive` → 题后续航菜单 |
-| 直接练习 | `practice` | `review_exam_points`（有章节时） | 考点展示 → 出题 → 判题 → 归档 → 题后续航菜单 |
-| 章节笔记学习 | `chapter_study` | `review_chapter` | 材料展示 → 出题 → 判题 → 归档 → 题后续航菜单 |
+| 模式          | ID                | 前置代码工具                       | 流程                                                                                           |
+| ------------- | ----------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 概念卡片+练习 | `card_practice` | `review_card`                    | 卡片展示 → 生成题目 →`review_answer` → 判题 → 讨论 → `review_archive` → 题后续航菜单 |
+| 直接练习      | `practice`      | `review_exam_points`（有章节时） | 考点展示 → 出题 → 判题 → 归档 → 题后续航菜单                                               |
+| 章节笔记学习  | `chapter_study` | `review_chapter`                 | 材料展示 → 出题 → 判题 → 归档 → 题后续航菜单                                               |
 
 ### 5.2 单题生命周期（agent 视角）
 
@@ -211,34 +211,34 @@ review_profiles/{subjectId}/
 
 ### 5.3 题目体系
 
-| 题型 | 代码 | 适用难度 |
-|------|------|----------|
-| 正误判断 | judgment | S-R, S-U |
-| 单项选择 | choice | S-U, M-U, M-A |
-| 多项选择 | multi_choice | M-U, M-A |
-| 简述题 | short_answer | M-A, C-A |
+| 题型     | 代码         | 适用难度      |
+| -------- | ------------ | ------------- |
+| 正误判断 | judgment     | S-R, S-U      |
+| 单项选择 | choice       | S-U, M-U, M-A |
+| 多项选择 | multi_choice | M-U, M-A      |
+| 简述题   | short_answer | M-A, C-A      |
 
 ### 5.4 难度矩阵
 
-| 级别 | 广度 × 认知 | 含义 |
-|------|-------------|------|
-| S-R | Single × Recall | 单一知识点记忆/识别 |
-| S-U | Single × Understand | 单一知识点理解/区分 |
-| M-U | Multi × Understand | 2-3 关联概念比较 |
-| M-A | Multi × Analyze | 多概念综合推理 |
-| C-A | Chain × Analyze | 知识链条综合 |
+| 级别 | 广度 × 认知         | 含义                |
+| ---- | -------------------- | ------------------- |
+| S-R  | Single × Recall     | 单一知识点记忆/识别 |
+| S-U  | Single × Understand | 单一知识点理解/区分 |
+| M-U  | Multi × Understand  | 2-3 关联概念比较    |
+| M-A  | Multi × Analyze     | 多概念综合推理      |
+| C-A  | Chain × Analyze     | 知识链条综合        |
 
 ## 6. Skill 体系
 
 13 个 skill 按角色分类：
 
-| 角色 | Skill | 用途 |
-|------|-------|------|
-| **主规则** | review-core | 运行时契约、工具路由、模式流程、profile 生命周期 |
-| **核心** | review-question / grade / discuss / summary | 出题/判题/讨论/复盘 |
-| **初始化** | review-init / fix | 资料包创建和修订 |
-| **子 skill** | review-profile-{structure,index,cards,exam-points,quality} | profile 构建各环节 |
-| **子 skill** | review-profile-training-assets | 训练资产（problem templates）构建 |
+| 角色               | Skill                                                      | 用途                                             |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------ |
+| **主规则**   | review-core                                                | 运行时契约、工具路由、模式流程、profile 生命周期 |
+| **核心**     | review-question / grade / discuss / summary                | 出题/判题/讨论/复盘                              |
+| **初始化**   | review-init / fix                                          | 资料包创建和修订                                 |
+| **子 skill** | review-profile-{structure,index,cards,exam-points,quality} | profile 构建各环节                               |
+| **子 skill** | review-profile-training-assets                             | 训练资产（problem templates）构建                |
 
 review-core 通过 `injectReviewCore()` 强制注入每个命令 prompt。子 skill 由 agent 按阶段通过 `/skill:xxx` 参考引用。
 
@@ -278,4 +278,10 @@ review-core 通过 `injectReviewCore()` 强制注入每个命令 prompt。子 sk
 
 ---
 
-未来产品方向由 `产品/标准化演进路线.md` 跟踪；本文档仅记录当前架构事实。
+## 9. 尚未落地的设计方向
+
+当前实现还不是 Skill Loop SDK。`/review`、`/review-init`、`/review-fix` 仍由 command 组装 prompt，再由 agent 按 skill 约束调用工具。
+
+后续设计方向见 `adr/0004-skill-loop-sdk-overlay.md`：以回路图为核心，把命令流程表达为可运行图；节点承载工作，边承载状态迁移，运行时负责驱动节点和边，并通过运行记录和异常诊断图提供诊断能力。
+
+未来产品方向由 `产品/标准化演进路线.md` 跟踪；本文档以当前架构事实为主。
