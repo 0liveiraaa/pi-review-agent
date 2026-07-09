@@ -103,7 +103,6 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "show_material",
     subGoal: "按模式调用资料展示工具，确保出题前先展示必要材料",
-    tools: ["review_card", "review_exam_points", "review_chapter"],
     execute: createAgentExecute({
       prompt(input) {
         const data = input.data || {};
@@ -194,7 +193,6 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "answer_question",
     subGoal: "调用 review_answer 展示题目并收集用户答案",
-    tools: ["review_answer"],
     execute: createAgentExecute({
       prompt(input) {
         return [
@@ -238,7 +236,6 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "archive_turn",
     subGoal: "调用 review_archive 归档已判题目",
-    tools: ["review_archive"],
     execute: createAgentExecute({
       prompt(input) {
         return [
@@ -255,7 +252,6 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "choose_turn_action",
     subGoal: "调用 review_turn_action 获取题后动作",
-    tools: ["review_turn_action"],
     execute: createAgentExecute({
       prompt(input) {
         return [

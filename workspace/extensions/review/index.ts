@@ -945,17 +945,7 @@ function createReviewAutocompleteProvider(current: AutocompleteProvider): Autoco
 async function registerReviewLoopGraph(pi: ExtensionAPI): Promise<void> {
   try {
     const sdk = await import("pi-loop-graph-sdk");
-    const loop = sdk.createLoopGraphExtension(pi, {
-      defaultTools: [
-        "review_card",
-        "review_exam_points",
-        "review_chapter",
-        "review_answer",
-        "review_archive",
-        "review_turn_action",
-        "review_list_dir",
-      ],
-    });
+    const loop = sdk.createLoopGraphExtension(pi, {});
     const graph = createReviewSingleTurnGraph(sdk);
     loop.registerGraph(graph);
   } catch (err: any) {
