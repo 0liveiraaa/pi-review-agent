@@ -161,6 +161,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     id: "generate_question",
     subGoal: "生成一道符合当前资料、知识点、题型和难度约束的结构化题目",
     skill: "review-question",
+    tools: ["review_list_dir"],
     execute: createAgentExecute({
       skill: "review-question",
       prompt(input) {

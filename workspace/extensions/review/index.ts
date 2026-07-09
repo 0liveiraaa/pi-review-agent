@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
   Container,
@@ -143,6 +143,11 @@ const ProfileEnableSchema = Type.Object({
   subject_id: Type.String(),
 });
 
+const ReviewListDirSchema = Type.Object({
+  subject_id: Type.String(),
+  subdir: Type.Optional(Type.String()),
+});
+
 const CardSchema = Type.Object({
   subject_id: Type.String(),
   knowledge_point_id: Type.Optional(Type.String()),
@@ -161,6 +166,30 @@ const TurnActionSchema = Type.Object({
   knowledge_point_id: Type.Optional(Type.String()),
   chapter_id: Type.Optional(Type.String()),
 });
+
+function listDirManifest(dir: string, maxFiles = 200): string[] {
+  const out: string[] = [];
+  if (!dir || !existsSync(dir)) return out;
+  try {
+    const walk = (current: string) => {
+      if (out.length >= maxFiles) return;
+      let entries;
+      try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (out.length >= maxFiles) return;
+        const full = `${current}/${entry.name}`;
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+          out.push(full.slice(dir.length + 1));
+        }
+      }
+    };
+    walk(dir);
+    out.sort();
+  } catch { /* ignore */ }
+  return out;
+}
 
 const REVIEW_PANEL_BODY_LINES = 18;
 const REVIEW_INPUT_TITLE_LINES = 8;
@@ -953,6 +982,7 @@ async function registerReviewLoopGraph(pi: ExtensionAPI): Promise<void> {
         "review_answer",
         "review_archive",
         "review_turn_action",
+        "review_list_dir",
       ],
     });
     const graph = createReviewSingleTurnGraph(sdk);
@@ -1350,6 +1380,52 @@ export default async function reviewExtension(pi: ExtensionAPI): Promise<void> {
     renderResult(result, _options, theme) {
       const details = result.details as { path?: string } | undefined;
       return new Text(theme.fg("success", `profile file ${details?.path || "handled"}`), 0, 0);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_list_dir",
+    label: "Review List Directory",
+    description: "列出当前 review profile 资料目录下的 .md 文件清单。subdir 可选：cards、chapters、exam_points，不填则列出全部三个目录。",
+    parameters: ReviewListDirSchema,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const profile = loadProfile(params.subject_id);
+      if (!profile) {
+        return {
+          content: [{ type: "text", text: `Profile not found: ${params.subject_id}` }],
+          details: { found: false },
+        };
+      }
+      const dirs: Record<string, string> = {
+        cards: profile.cardsDir,
+        chapters: profile.chaptersDir,
+        exam_points: profile.examPointsDir,
+      };
+      const selected = params.subdir ? { [params.subdir]: dirs[params.subdir] } : dirs;
+      const allListings: string[] = [];
+      for (const [label, dir] of Object.entries(selected)) {
+        if (!dir) continue;
+        const files = listDirManifest(dir);
+        if (files.length === 0) {
+          allListings.push(`## ${label}/\n(空目录)`);
+        } else {
+          allListings.push(`## ${label}/ (${files.length} 个文件)\n${files.map((f) => `- ${f}`).join("\n")}`);
+        }
+      }
+      const text = allListings.length > 0
+        ? `Profile: ${profile.subjectId}\n\n${allListings.join("\n\n")}`
+        : `Profile ${profile.subjectId}: 无可列举的目录`;
+      return {
+        content: [{ type: "text", text }],
+        details: { found: true, subject_id: profile.subjectId, dirs: Object.keys(selected) },
+      };
+    },
+    renderCall(args, theme) {
+      return new Text(theme.fg("toolTitle", theme.bold("review_list_dir ")) + theme.fg("muted", `${args.subject_id || ""} ${args.subdir || ""}`), 0, 0);
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as { found?: boolean } | undefined;
+      return new Text(theme.fg(details?.found ? "success" : "warning", `list ${details?.found ? "ok" : "failed"}`), 0, 0);
     },
   });
 
