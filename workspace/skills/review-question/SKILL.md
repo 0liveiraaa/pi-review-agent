@@ -9,14 +9,17 @@ description: 根据当前 profile 资料生成一道结构化复习题。用于 
 
 ## 需要读取的资料
 
+资料文件的绝对路径由系统通过 prompt 注入（见 `## Profile Data Paths` 区块）。所有 read 必须使用注入的绝对路径，不要自行拼接或猜测路径。
+
 - `subject.md`：科目风格和考试目标。
 - `knowledge_index.json`：知识点 ID、名称、常见误区、关联知识点、题型建议和难度基线。
-- `cards/`：模式 1 中的概念卡片资料。
-- `chapters/`：当前章节或小节的详细资料。
-- `exam_points/`：可用时作为考试导向参考。
+- `cards/`：模式 1 中的概念卡片资料。读取 `cardsDir` 下的具体卡片 `.md` 文件。
+- `chapters/`：当前章节或小节的详细资料。读取 `chaptersDir` 下的具体章节 `.md` 文件。
+- `exam_points/`：可用时作为考试导向参考。读取 `examPointsDir` 下的具体考点 `.md` 文件。
 - `problem_templates/`：如果存在，优先作为数学、真题风格或深度训练题的生成依据。
 
 生成题目前必须读取相关文件。如果资料缺失或含糊，说明缺失内容，不要编造。
+若 prompt 中无 `## Profile Data Paths` 区块，或路径下无对应文件，应如实告知而不是反复猜测文件名。
 
 ## 输出契约
 

@@ -1,3 +1,5 @@
+import { loadProfile } from "./review_profiles.mjs";
+
 const LOCAL_END = Symbol.for("pi-review.loop-graph.end");
 
 function defaultAgentExecute(options = {}) {
@@ -28,13 +30,33 @@ export function createReviewSingleTurnGraph(sdk = {}) {
   const END = sdk.END || LOCAL_END;
   const createAgentExecute = sdk.createAgentExecute || defaultAgentExecute;
 
+  function resolveProfilePaths(subjectId) {
+    try {
+      const profile = loadProfile(subjectId);
+      if (!profile) return null;
+      return {
+        root: profile.root,
+        subjectPath: profile.subjectPath,
+        knowledgeIndexPath: profile.knowledgeIndexPath,
+        cardsDir: profile.cardsDir,
+        chaptersDir: profile.chaptersDir,
+        examPointsDir: profile.examPointsDir,
+        sourceMapPath: profile.sourceMapPath,
+        qualityReportPath: profile.qualityReportPath,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   const prepareReviewTurn = {
     kind: "code",
     id: "prepare_review_turn",
-    subGoal: "校验单题复习输入，并决定是否需要先展示资料",
+    subGoal: "校验单题复习输入，解析资料路径，并决定是否需要先展示资料",
     async execute(_instance, input) {
       const data = input.data || {};
       const mode = String(data.mode || "practice");
+      const profilePaths = data.subject_id ? resolveProfilePaths(data.subject_id) : null;
       return {
         nodeId: "prepare_review_turn",
         status: data.subject_id ? "ok" : "failed",
@@ -42,6 +64,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
           ...data,
           mode,
           needs_material: mode === "card_practice" || mode === "chapter_study" || Boolean(data.chapter_id),
+          profilePaths,
         },
       };
     },
@@ -54,16 +77,43 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     tools: ["review_card", "review_exam_points", "review_chapter"],
     execute: createAgentExecute({
       prompt(input) {
+        const data = input.data || {};
+        const pathsBlock = formatProfilePathsBlock(data.profilePaths);
+        const inputBlock = JSON.stringify({
+          subject_id: data.subject_id,
+          mode: data.mode,
+          chapter_id: data.chapter_id || "",
+          knowledge_point_id: data.knowledge_point_id || "",
+          difficulty: data.difficulty || "",
+          question_type: data.question_type || "",
+        });
         return [
           "根据当前单题复习输入调用恰当的资料展示工具。",
           "card_practice 使用 review_card；chapter_study 使用 review_chapter；practice 有 chapter_id 时使用 review_exam_points。",
           "工具返回 practice 后，调用 __graph_complete__，result 保留 subject_id、mode、chapter_id、knowledge_point_id、difficulty、question_type。",
-          `当前输入: ${JSON.stringify(input.data)}`,
-        ].join("\n");
+          pathsBlock,
+          `当前输入: ${inputBlock}`,
+        ].filter(Boolean).join("\n");
       },
       tools: ["review_card", "review_exam_points", "review_chapter"],
     }),
   };
+
+  function formatProfilePathsBlock(paths) {
+    if (!paths) return "";
+    return [
+      "## Profile Data Paths",
+      "以下为当前资料包文件的绝对路径，所有 read 操作请使用这些路径。",
+      `- 科目说明: ${paths.subjectPath}`,
+      `- 知识点索引: ${paths.knowledgeIndexPath}`,
+      `- 概念卡片目录: ${paths.cardsDir}`,
+      `- 章节笔记目录: ${paths.chaptersDir}`,
+      `- 考点总结目录: ${paths.examPointsDir}`,
+      `- 源映射: ${paths.sourceMapPath}`,
+      `- 质量报告: ${paths.qualityReportPath}`,
+      "",
+    ].join("\n");
+  }
 
   const generateQuestion = {
     kind: "code",
@@ -73,11 +123,22 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     execute: createAgentExecute({
       skill: "review-question",
       prompt(input) {
+        const data = input.data || {};
+        const pathsBlock = formatProfilePathsBlock(data.profilePaths);
+        const inputBlock = JSON.stringify({
+          subject_id: data.subject_id,
+          mode: data.mode,
+          chapter_id: data.chapter_id || "",
+          knowledge_point_id: data.knowledge_point_id || "",
+          difficulty: data.difficulty || "",
+          question_type: data.question_type || "",
+        });
         return [
           "生成一道结构化复习题，但不要直接向用户展示。",
           "完成后调用 __graph_complete__，result.question 必须包含 type、question_text、knowledge_points、difficulty、correct_answer、explanation_l1、source_basis。",
-          `当前输入: ${JSON.stringify(input.data)}`,
-        ].join("\n");
+          pathsBlock,
+          `当前输入: ${inputBlock}`,
+        ].filter(Boolean).join("\n");
       },
       validateCompletion(result) {
         const question = result.question;
