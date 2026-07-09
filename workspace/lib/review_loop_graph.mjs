@@ -163,7 +163,6 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     skill: "review-question",
     execute: createAgentExecute({
       skill: "review-question",
-      tools: ["review_list_dir"],
       prompt(input) {
         const data = input.data || {};
         const pathsBlock = formatProfilePathsBlock(data.profilePaths);
