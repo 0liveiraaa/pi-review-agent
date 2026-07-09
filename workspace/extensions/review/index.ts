@@ -944,9 +944,19 @@ function createReviewAutocompleteProvider(current: AutocompleteProvider): Autoco
 
 async function registerReviewLoopGraph(pi: ExtensionAPI): Promise<void> {
   try {
-    const sdk = await import("pi-loop-graph-sdk/src/index.ts");
+    const sdk = await import("pi-loop-graph-sdk");
+    const loop = sdk.createLoopGraphExtension(pi, {
+      defaultTools: [
+        "review_card",
+        "review_exam_points",
+        "review_chapter",
+        "review_answer",
+        "review_archive",
+        "review_turn_action",
+      ],
+    });
     const graph = createReviewSingleTurnGraph(sdk);
-    sdk.registerGraph(pi, graph);
+    loop.registerGraph(graph);
   } catch (err: any) {
     pi.on("session_start", async (_event, ctx) => {
       ctx.ui.notify(`Loop Graph SDK not available; /review-turn disabled: ${err?.message || String(err)}`, "warning");

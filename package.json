@@ -27,7 +27,8 @@
     "test": "npm --prefix workspace test"
   },
   "dependencies": {
-    "marked": "^18.0.5"
+    "marked": "^18.0.5",
+    "pi-loop-graph-sdk": "file:C:/Users/25173/.pi/agent/git/github.com/0liveiraaa/pi-loop-graph-sdk"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

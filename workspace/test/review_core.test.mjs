@@ -381,7 +381,8 @@ test("review prompts force the core skill and command prompts mention init and f
   assert.match(extensionSource, /\/skill:review-fix/);
   assert.match(extensionSource, /injectReviewCore/);
   assert.match(extensionSource, /createReviewSingleTurnGraph/);
-  assert.match(extensionSource, /registerGraph/);
+  assert.match(extensionSource, /createLoopGraphExtension/);
+  assert.doesNotMatch(extensionSource, /pi-loop-graph-sdk\/src\/index\.ts/);
   assert.doesNotMatch(extensionSource, /increase_difficulty/);
 });
 
