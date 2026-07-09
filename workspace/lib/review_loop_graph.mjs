@@ -1,3 +1,5 @@
+import { readdirSync, statSync } from "node:fs";
+import { relative } from "node:path";
 import { loadProfile } from "./review_profiles.mjs";
 
 const LOCAL_END = Symbol.for("pi-review.loop-graph.end");
@@ -30,6 +32,30 @@ export function createReviewSingleTurnGraph(sdk = {}) {
   const END = sdk.END || LOCAL_END;
   const createAgentExecute = sdk.createAgentExecute || defaultAgentExecute;
 
+  function listDirManifest(dir, maxFiles = 200) {
+    const out = [];
+    if (!dir) return out;
+    try {
+      const walk = (current) => {
+        if (out.length >= maxFiles) return;
+        let entries;
+        try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+          if (out.length >= maxFiles) return;
+          const full = `${current}/${entry.name}`;
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+            out.push(relative(dir, full));
+          }
+        }
+      };
+      walk(dir);
+      out.sort();
+    } catch { /* ignore missing dirs */ }
+    return out;
+  }
+
   function resolveProfilePaths(subjectId) {
     try {
       const profile = loadProfile(subjectId);
@@ -43,6 +69,9 @@ export function createReviewSingleTurnGraph(sdk = {}) {
         examPointsDir: profile.examPointsDir,
         sourceMapPath: profile.sourceMapPath,
         qualityReportPath: profile.qualityReportPath,
+        cardsFiles: listDirManifest(profile.cardsDir),
+        chaptersFiles: listDirManifest(profile.chaptersDir),
+        examPointsFiles: listDirManifest(profile.examPointsDir),
       };
     } catch {
       return null;
@@ -99,20 +128,32 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     }),
   };
 
+  function formatFileList(label, dir, files, maxShow = 50) {
+    if (!files || files.length === 0) return [`- ${label}: (空目录)`];
+    const shown = files.slice(0, maxShow);
+    const lines = shown.map((f) => `    ${f}`);
+    if (files.length > maxShow) lines.push(`    ... 共 ${files.length} 个文件，以上为前 ${maxShow} 个`);
+    return [`- ${label} (${files.length} 个文件):`, ...lines];
+  }
+
   function formatProfilePathsBlock(paths) {
     if (!paths) return "";
-    return [
+    const lines = [
       "## Profile Data Paths",
-      "以下为当前资料包文件的绝对路径，所有 read 操作请使用这些路径。",
+      "以下为当前资料包文件的绝对路径，所有 read 操作请使用这些路径。不要猜测文件名，从下列清单中选择。",
       `- 科目说明: ${paths.subjectPath}`,
       `- 知识点索引: ${paths.knowledgeIndexPath}`,
       `- 概念卡片目录: ${paths.cardsDir}`,
+      ...formatFileList("cards 文件清单", paths.cardsDir, paths.cardsFiles, 80),
       `- 章节笔记目录: ${paths.chaptersDir}`,
+      ...formatFileList("chapters 文件清单", paths.chaptersDir, paths.chaptersFiles, 80),
       `- 考点总结目录: ${paths.examPointsDir}`,
+      ...formatFileList("exam_points 文件清单", paths.examPointsDir, paths.examPointsFiles, 80),
       `- 源映射: ${paths.sourceMapPath}`,
       `- 质量报告: ${paths.qualityReportPath}`,
       "",
-    ].join("\n");
+    ];
+    return lines.join("\n");
   }
 
   const generateQuestion = {
