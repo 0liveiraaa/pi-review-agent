@@ -103,6 +103,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "show_material",
     subGoal: "按模式调用资料展示工具，确保出题前先展示必要材料",
+    tools: ["review_card", "review_exam_points", "review_chapter"],
     execute: createAgentExecute({
       prompt(input) {
         const data = input.data || {};
@@ -118,7 +119,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
         return [
           "根据当前单题复习输入调用恰当的资料展示工具。",
           "card_practice 使用 review_card；chapter_study 使用 review_chapter；practice 有 chapter_id 时使用 review_exam_points。",
-          "工具返回 practice 后，调用 __graph_complete__，result 保留 subject_id、mode、chapter_id、knowledge_point_id、difficulty、question_type。",
+          "工具返回后调用 __graph_complete__，result 必须包含 subject_id、mode、chapter_id、knowledge_point_id、difficulty、question_type，同时必须透传 profilePaths。",
           pathsBlock,
           `当前输入: ${inputBlock}`,
         ].filter(Boolean).join("\n");
@@ -193,6 +194,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "answer_question",
     subGoal: "调用 review_answer 展示题目并收集用户答案",
+    tools: ["review_answer"],
     execute: createAgentExecute({
       prompt(input) {
         return [
@@ -236,6 +238,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "archive_turn",
     subGoal: "调用 review_archive 归档已判题目",
+    tools: ["review_archive"],
     execute: createAgentExecute({
       prompt(input) {
         return [
@@ -252,6 +255,7 @@ export function createReviewSingleTurnGraph(sdk = {}) {
     kind: "code",
     id: "choose_turn_action",
     subGoal: "调用 review_turn_action 获取题后动作",
+    tools: ["review_turn_action"],
     execute: createAgentExecute({
       prompt(input) {
         return [

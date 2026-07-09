@@ -404,12 +404,14 @@ test("single-turn review graph preserves required review actions", () => {
   assert.deepEqual(reviewSingleTurnGraph.routing.grade_answer.edges.map((edge) => edge.to), ["archive_turn"]);
   assert.deepEqual(reviewSingleTurnGraph.routing.archive_turn.edges.map((edge) => edge.to), ["choose_turn_action"]);
 
-  // Node-level tools removed; tools are declared via createAgentExecute options only
-  // to avoid SDK combining defaultTools + node tools without dedup.
-  assert.equal(typeof reviewSingleTurnGraph.nodes.show_material.execute, "function");
-  assert.equal(typeof reviewSingleTurnGraph.nodes.answer_question.execute, "function");
-  assert.equal(typeof reviewSingleTurnGraph.nodes.archive_turn.execute, "function");
-  assert.equal(typeof reviewSingleTurnGraph.nodes.choose_turn_action.execute, "function");
+  assert.deepEqual(reviewSingleTurnGraph.nodes.show_material.tools, [
+    "review_card",
+    "review_exam_points",
+    "review_chapter",
+  ]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.answer_question.tools, ["review_answer"]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.archive_turn.tools, ["review_archive"]);
+  assert.deepEqual(reviewSingleTurnGraph.nodes.choose_turn_action.tools, ["review_turn_action"]);
 });
 
 test("post-turn action menu only exposes continuation actions", () => {
