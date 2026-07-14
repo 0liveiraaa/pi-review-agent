@@ -1,3 +1,5 @@
+#项目已经由[Pi-loop-graph-SDK](https://github.com/0liveiraaa/pi-loop-graph-sdk)重写,新的项目链接在这里(Pi-study-helper)[https://github.com/0liveiraaa/pi-study-helper],该项目已暂停维护不再更新
+
 # Pi 复习助手 🎯
 
 > **AI 驱动的课程期末复习助手** — 在 pi-agent TUI 中与 AI 对话式刷题、背卡片、学章节。
